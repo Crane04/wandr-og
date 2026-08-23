@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <title>Football — Controller</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #000;
+        touch-action: none;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-user-drag: none;
+        touch-action: none;
+      }
+      html,
+      body {
+        height: 100%;
+        background: radial-gradient(
+          circle at 50% 25%,
+          #30343b 0,
+          #111318 48%,
+          #08090b 100%
+        );
+        color: #fff;
+        font-family: "Courier New", monospace;
+        overflow: hidden;
+        touch-action: none;
+      }
+      #status {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        text-align: center;
+        padding: max(7px, env(safe-area-inset-top)) 12px 7px;
+        font-size: 12px;
+        background: rgba(0, 0, 0, 0.72);
+        z-index: 5;
+      }
+      #status.connected {
+        color: #4dff4d;
+      }
+      #status.error {
+        color: #ff4444;
+      }
+      #status.teamA { color: #66ccff; }
+      #status.teamB { color: #ff6666; }
+
+      #joinScreen {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 20px;
+      }
+      #joinScreen input {
+        font-size: 28px;
+        text-align: center;
+        letter-spacing: 6px;
+        padding: 10px;
+        width: 180px;
+        text-transform: uppercase;
+        border-radius: 8px;
+        border: none;
+      }
+      #joinScreen button {
+        font-size: 18px;
+        padding: 12px 24px;
+        background: #ffcc00;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+      }
+
+      #controls {
+        display: none;
+        height: 100%;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+        padding: 38px max(18px, env(safe-area-inset-right)) 10px
+          max(18px, env(safe-area-inset-left));
+      }
+      .gamepad {
+        position: relative;
+        width: min(92vw, 760px);
+        height: min(76vh, 330px);
+        min-height: 220px;
+        display: grid;
+        grid-template-columns: 1fr 0.78fr 1fr;
+        align-items: center;
+        padding: 28px 7%;
+        background: linear-gradient(
+          145deg,
+          #363a42 0%,
+          #17191e 48%,
+          #0d0e12 100%
+        );
+        border: 2px solid #4a4e57;
+        border-radius: 34% 34% 25% 25% / 25% 25% 42% 42%;
+        box-shadow:
+          inset 0 3px 5px rgba(255, 255, 255, 0.16),
+          inset 0 -10px 18px #050607,
+          0 18px 35px rgba(0, 0, 0, 0.65);
+      }
+      .grip {
+        position: absolute;
+        bottom: -5%;
+        width: 28%;
+        height: 52%;
+        background: linear-gradient(160deg, #24272e, #101216);
+        z-index: -1;
+      }
+      .grip.left {
+        left: 2%;
+        transform: rotate(10deg);
+        border-radius: 35% 20% 55% 50%;
+      }
+      .grip.right {
+        right: 2%;
+        transform: rotate(-10deg);
+        border-radius: 20% 35% 50% 55%;
+      }
+      .btn,
+      .decor-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: #fff;
+        background: linear-gradient(145deg, #363a42, #17191e);
+        border: 2px solid #555b66;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.15),
+          0 4px 7px rgba(0, 0, 0, 0.7);
+      }
+      .btn.active {
+        transform: scale(0.94);
+        background: linear-gradient(145deg, #ffc400, #a76a00);
+        color: #17120a;
+        box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.65);
+      }
+      .dpad {
+        position: relative;
+        width: clamp(128px, 20vw, 174px);
+        aspect-ratio: 1;
+        justify-self: start;
+      }
+      .dpad::before,
+      .dpad::after {
+        content: "";
+        position: absolute;
+        background: linear-gradient(145deg, #343840, #15171b);
+        border: 2px solid #50545d;
+        box-shadow: 0 5px 8px #08090b;
+        border-radius: 9px;
+      }
+      .dpad::before {
+        left: 33%;
+        top: 0;
+        width: 34%;
+        height: 100%;
+      }
+      .dpad::after {
+        left: 0;
+        top: 33%;
+        width: 100%;
+        height: 34%;
+      }
+      .dpad-center {
+        position: absolute;
+        inset: 36%;
+        z-index: 2;
+        border-radius: 50%;
+        background: #181a1f;
+        box-shadow: inset 0 2px 5px #07080a;
+      }
+      .dpad .btn,
+      .dpad .decor-button {
+        position: absolute;
+        z-index: 3;
+        width: 32%;
+        height: 30%;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        font-size: clamp(20px, 4vw, 32px);
+        color: #8d929c;
+      }
+      #leftBtn {
+        left: 1%;
+        top: 35%;
+      }
+      #rightBtn {
+        right: 1%;
+        top: 35%;
+      }
+      .dpad-up {
+        left: 34%;
+        top: 1%;
+      }
+      .dpad-down {
+        left: 34%;
+        bottom: 1%;
+      }
+      .analog {
+        position: relative;
+        width: clamp(138px, 21vw, 184px);
+        aspect-ratio: 1;
+        justify-self: start;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .analog-base {
+        position: relative;
+        width: 82%;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: radial-gradient(circle, #252932 0 34%, #111318 72%);
+        border: 3px solid #50545d;
+        box-shadow:
+          inset 0 5px 13px #050607,
+          0 5px 8px #08090b;
+      }
+      .analog-stick {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 45%;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        background: radial-gradient(circle at 35% 30%, #5a606b, #1b1e24 68%);
+        border: 2px solid #6a707b;
+        box-shadow:
+          inset 0 2px 4px rgba(255, 255, 255, 0.2),
+          0 6px 10px rgba(0, 0, 0, 0.8);
+        pointer-events: none;
+      }
+      .center-panel {
+        align-self: center;
+        text-align: center;
+        color: #858b96;
+        font:
+          700 clamp(8px, 1.4vw, 12px) Arial,
+          sans-serif;
+        letter-spacing: 2px;
+      }
+      .touchpad {
+        width: 100%;
+        height: clamp(48px, 11vh, 76px);
+        margin-bottom: 12px;
+        border: 2px solid #444952;
+        border-radius: 8px;
+        background: radial-gradient(#252931 1px, #111318 1px);
+        background-size: 4px 4px;
+        box-shadow: inset 0 2px 8px #050607;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font: 700 clamp(7px, 1.1vw, 10px) Arial, sans-serif;
+        line-height: 1.5;
+        letter-spacing: 0;
+      }
+      #startControl {
+        width: min(100%, 92px);
+        margin: 0 auto 8px;
+        padding: 7px 10px;
+        border-radius: 999px;
+        font:
+          700 clamp(9px, 1.5vw, 12px) Arial,
+          sans-serif;
+        letter-spacing: 1px;
+      }
+      .face-buttons {
+        position: relative;
+        width: clamp(132px, 21vw, 184px);
+        aspect-ratio: 1;
+        justify-self: end;
+      }
+      .face-buttons .btn,
+      .face-buttons .decor-button {
+        position: absolute;
+        width: 36%;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        font:
+          bold clamp(18px, 3.5vw, 28px) Arial,
+          sans-serif;
+      }
+      .face-right {
+        right: 0;
+        top: 32%;
+        color: #ff6374;
+        border-color: #8d4650;
+      }
+      .face-top {
+        top: 0;
+        left: 32%;
+        color: #55cdd2;
+      }
+      .face-left {
+        top: 32%;
+        left: 0;
+        color: #dc82d8;
+      }
+      .face-bottom {
+        bottom: 0;
+        left: 32%;
+        color: #8d9cff;
+      }
+      #rotatePrompt {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 16px;
+        background: #101216;
+        font:
+          bold 18px Arial,
+          sans-serif;
+      }
+      #rotatePrompt .phone {
+        font-size: 54px;
+        transform: rotate(90deg);
+      }
+      @media (orientation: portrait) {
+        #controls.active + #rotatePrompt {
+          display: flex;
+        }
+      }
+      @media (max-height: 300px) {
+        .gamepad {
+          height: 82vh;
+          min-height: 180px;
+        }
+        .center-panel {
+          transform: scale(0.88);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">Connecting...</div>
+
+    <div id="joinScreen">
+      <h2>Join Room</h2>
+      <input
+        id="roomInput"
+        maxlength="4"
+        placeholder="CODE"
+        autocomplete="off"
+      />
+      <button id="joinBtn">Join</button>
+    </div>
+
+    <div id="controls">
+      <div class="gamepad">
+        <div class="grip left"></div>
+        <div class="grip right"></div>
+        <div class="analog" id="analogZone" aria-label="Analog movement stick">
+          <div class="analog-base" id="analogBase">
+            <div class="analog-stick" id="analogStick"></div>
+          </div>
+        </div>
+        <div class="center-panel">
+          <div class="touchpad">
+            <!-- × SHORT PASS&nbsp; ○ CHANGE PLAYER<br />△ LONG PASS&nbsp; □ SHOOT -->
+          </div>
+          <div
+            class="btn"
+            id="startControl"
+            aria-label="Start, pause, or resume game"
+          >
+            START
+          </div>
+         WANDR.com
+        </div>
+        <div class="face-buttons" aria-label="Action controls">
+          <div class="btn face-top" id="longPassBtn" aria-label="Long pass">△</div>
+          <div class="btn face-left" id="shootBtn" aria-label="Shoot">□</div>
+          <div class="btn face-right" id="crossBtn" aria-label="Change player">○</div>
+          <div class="btn face-bottom" id="shortPassBtn" aria-label="Short pass or mark">
+            ×
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="rotatePrompt">
+      <div class="phone">▯</div>
+      <div>Rotate your phone to play</div>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const prefilledRoom = params.get("room");
+
+      const ws = new WebSocket(`ws://${location.host}`);
+      const statusEl = document.getElementById("status");
+
+      ws.onopen = () => {
+        statusEl.textContent = "Connected to server";
+        statusEl.className = "connected";
+        if (prefilledRoom) {
+          joinRoom(prefilledRoom);
+        }
+      };
+
+      ws.onclose = () => {
+        statusEl.textContent = "Disconnected";
+        statusEl.className = "error";
+        resetAllControls();
+      };
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "joined") {
+          statusEl.textContent = `Team ${msg.team} — Room ${msg.room}`;
+          statusEl.className = msg.team === "A" ? "teamA" : "teamB";
+          document.getElementById("joinScreen").style.display = "none";
+          const controls = document.getElementById("controls");
+          controls.style.display = "flex";
+          controls.classList.add("active");
+          if (screen.orientation?.lock)
+            screen.orientation.lock("landscape").catch(() => {});
+        }
+        if (msg.type === "join-error") {
+          statusEl.textContent = msg.message;
+          statusEl.className = "error";
+        }
+      };
+
+      function joinRoom(code) {
+        ws.send(JSON.stringify({ type: "join", room: code.toUpperCase() }));
+      }
+
+      document.getElementById("joinBtn").addEventListener("click", () => {
+        const code = document.getElementById("roomInput").value.trim();
+        if (code.length === 4) joinRoom(code);
+      });
+      if (prefilledRoom)
+        document.getElementById("roomInput").value = prefilledRoom;
+
+      // Prevent iOS Chrome/Safari from treating controller gestures as page gestures.
+      document.addEventListener("contextmenu", (e) => e.preventDefault());
+      document.addEventListener("dblclick", (e) => e.preventDefault(), {
+        passive: false,
+      });
+      document.addEventListener("gesturestart", (e) => e.preventDefault(), {
+        passive: false,
+      });
+      document.addEventListener("gesturechange", (e) => e.preventDefault(), {
+        passive: false,
+      });
+      document.addEventListener("gestureend", (e) => e.preventDefault(), {
+        passive: false,
+      });
+      document.addEventListener("touchmove", (e) => e.preventDefault(), {
+        passive: false,
+      });
+
+      // ---------- Analog movement ----------
+      const analogZone = document.getElementById("analogZone");
+      const analogBase = document.getElementById("analogBase");
+      const analogStick = document.getElementById("analogStick");
+      let lastJoystick = { x: 0, y: 0 };
+      let analogPointerId = null;
+
+      function sendJoystick() {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "input", joystick: lastJoystick }));
+        }
+      }
+
+      // A steady 30Hz stream is responsive without flooding the socket with
+      // every raw browser pointermove event.
+      setInterval(sendJoystick, 33);
+
+      function updateAnalog(e) {
+        const rect = analogBase.getBoundingClientRect();
+        const radius = rect.width * 0.3;
+        let dx = e.clientX - (rect.left + rect.width / 2);
+        let dy = e.clientY - (rect.top + rect.height / 2);
+        const distance = Math.hypot(dx, dy);
+        if (distance > radius) {
+          dx = (dx / distance) * radius;
+          dy = (dy / distance) * radius;
+        }
+        analogStick.style.transform =
+          `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        lastJoystick = {
+          x: +(dx / radius).toFixed(2),
+          y: +(dy / radius).toFixed(2),
+        };
+      }
+
+      function resetAnalog() {
+        analogStick.style.transform = "translate(-50%, -50%)";
+        lastJoystick = { x: 0, y: 0 };
+        sendJoystick();
+      }
+
+      analogZone.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        if (analogPointerId !== null) return;
+        analogPointerId = e.pointerId;
+        analogZone.setPointerCapture?.(e.pointerId);
+        updateAnalog(e);
+        sendJoystick();
+      });
+      analogZone.addEventListener("pointermove", (e) => {
+        if (e.pointerId === analogPointerId) updateAnalog(e);
+      });
+      function finishAnalog(e) {
+        if (e.pointerId !== analogPointerId) return;
+        analogPointerId = null;
+        resetAnalog();
+      }
+      ["pointerup", "pointercancel", "lostpointercapture"].forEach((event) =>
+        analogZone.addEventListener(event, finishAnalog),
+      );
+
+      const buttonResetters = [];
+      function bindAction(el, button) {
+        const activePointers = new Set();
+        const send = (state) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "input", button, state }));
+          }
+          el.classList.toggle("active", state === "down");
+        };
+        el.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          if (activePointers.has(e.pointerId)) return;
+          const wasUp = activePointers.size === 0;
+          activePointers.add(e.pointerId);
+          el.setPointerCapture?.(e.pointerId);
+          if (wasUp) send("down");
+        });
+        const release = (e) => {
+          e.preventDefault();
+          if (!activePointers.delete(e.pointerId)) return;
+          if (activePointers.size === 0) send("up");
+        };
+        ["pointerup", "pointercancel", "lostpointercapture"].forEach((event) =>
+          el.addEventListener(event, release),
+        );
+        buttonResetters.push(() => {
+          if (activePointers.size === 0) return;
+          activePointers.clear();
+          send("up");
+        });
+      }
+
+      bindAction(document.getElementById("shortPassBtn"), "shortPass");
+      bindAction(document.getElementById("crossBtn"), "cross");
+      bindAction(document.getElementById("longPassBtn"), "longPass");
+      bindAction(document.getElementById("shootBtn"), "shoot");
+      bindAction(document.getElementById("startControl"), "start");
+
+      function resetAllControls() {
+        analogPointerId = null;
+        resetAnalog();
+        for (const resetButton of buttonResetters) resetButton();
+      }
+
+      window.addEventListener("blur", resetAllControls);
+      window.addEventListener("pagehide", resetAllControls);
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) resetAllControls();
+      });
+    </script>
+  </body>
+</html>

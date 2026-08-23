@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chicken Invaders</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: radial-gradient(circle at 50% 35%, #16234c, #030611 68%, #000);
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: 8px;
+    overflow: hidden;
+  }
+  #lobby {
+    text-align: center;
+  }
+  #lobby h1 {
+    color: #ffcc00;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+  #roomCode {
+    font-size: 48px;
+    letter-spacing: 8px;
+    color: #4dff4d;
+    margin: 12px 0;
+  }
+  #qrcode {
+    background: #fff;
+    padding: 10px;
+    display: inline-block;
+    border-radius: 8px;
+  }
+  #players {
+    margin-top: 12px;
+    color: #66ccff;
+  }
+  #startBtn {
+    margin-top: 20px;
+    padding: 12px 28px;
+    font-size: 18px;
+    background: #ffcc00;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+  }
+  #startBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  #fullscreenLobbyBtn {
+    margin-top: 10px;
+    padding: 9px 18px;
+    font-size: 13px;
+    color: #cfe1ff;
+    background: #102654;
+    border: 1px solid #5689e8;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+  }
+  #soundBtn {
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    z-index: 25;
+    padding: 8px 12px;
+    border: 1px solid #52678f;
+    border-radius: 6px;
+    color: #fff;
+    background: rgba(6, 15, 35, .82);
+    font: bold 12px 'Courier New', monospace;
+    cursor: pointer;
+  }
+  canvas {
+    background: #000;
+    border: 1px solid #263766;
+    border-radius: 10px;
+    box-shadow: 0 0 45px rgba(35, 80, 180, .28), inset 0 0 40px #000;
+    display: none;
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+  }
+  #splitScreen {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    background: #000;
+  }
+  #splitScreen iframe {
+    width: 50%;
+    height: 100%;
+    border: 0;
+  }
+  #splitScreen iframe + iframe { border-left: 3px solid #ffcc00; }
+  body.embedded #lobby, body.embedded #soundBtn { display: none !important; }
+  #playerBadge {
+    display: none;
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 8;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .58);
+    color: #ffdc35;
+    font-weight: bold;
+    pointer-events: none;
+  }
+  body.embedded #playerBadge { display: block; }
+  #hud {
+    display: none !important;
+    justify-content: space-between;
+    width: 800px;
+    font-size: 18px;
+    color: #fff;
+    text-shadow: 0 0 8px #5599ff, 2px 2px 2px #000;
+    font-weight: bold;
+    letter-spacing: 1px;
+  }
+  #gameOverOverlay, #pauseOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 10;
+  }
+  #gameOverOverlay h2 { color: #ff4444; font-size: 42px; }
+  #pauseOverlay h2 { color: #ffcc00; font-size: 42px; }
+  #gameOverOverlay button {
+    padding: 10px 24px;
+    font-size: 16px;
+    background: #4dff4d;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+
+<div id="lobby">
+  <h1>🐔 CHICKEN INVADERS 🐔</h1>
+  <p>Scan with your phone to become the controller</p>
+  <div id="roomCode">----</div>
+  <div id="qrcode"></div>
+  <div id="players">Waiting for player...</div>
+  <button id="startBtn" disabled>Start Game</button>
+  <br>
+  <button id="fullscreenLobbyBtn">Enter Fullscreen</button>
+</div>
+
+<div id="hud">
+  <span id="livesDisplay">♥ ♥ ♥</span>
+  <span id="powerDisplay"></span>
+  <span id="scoreDisplay">000000</span>
+</div>
+<canvas id="game" width="800" height="600"></canvas>
+<div id="splitScreen" aria-label="Two player split screen"></div>
+<div id="playerBadge"></div>
+
+<div id="gameOverOverlay">
+  <h2>GAME OVER</h2>
+  <p id="finalScore"></p>
+  <p>Press START on the controller to restart</p>
+  <button id="playAgainBtn">Play Again</button>
+</div>
+
+<div id="pauseOverlay">
+  <h2>PAUSED</h2>
+  <p>Press START to resume</p>
+</div>
+
+<button id="soundBtn" aria-label="Toggle sound">🔊 SOUND ON</button>
+
+<script>
+const ws = new WebSocket(`ws://${location.host}`);
+let roomCode = null;
+let playerConnected = false;
+const connectedPlayers = new Set();
+
+const gameParams = new URLSearchParams(location.search);
+const requestedId = (gameParams.get('id') || localStorage.getItem('chickenInvadersGameId') || '').toUpperCase();
+let gameId = /^[A-Z2-9]{4}$/.test(requestedId) ? requestedId : null;
+const embeddedPlayer = Number(gameParams.get('player')) || 0;
+const embedded = gameParams.get('embedded') === '1' && (embeddedPlayer === 1 || embeddedPlayer === 2);
+if (embedded) document.body.classList.add('embedded');
+document.getElementById('playerBadge').textContent = embedded ? `PLAYER ${embeddedPlayer}` : '';
+
+// ---------- Procedural arcade audio ----------
+let audioCtx = null;
+let masterGain = null;
+let musicTimer = null;
+let musicStep = 0;
+let soundEnabled = localStorage.getItem('chickenInvadersSound') !== 'off';
+
+function ensureAudio() {
+  if (!soundEnabled) return null;
+  if (!audioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return null;
+    audioCtx = new AudioContext();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = .3;
+    masterGain.connect(audioCtx.destination);
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume().then(updateSoundButton).catch(() => {});
+  else updateSoundButton();
+  return audioCtx;
+}
+
+function tone(frequency, duration, type = 'square', volume = .08, endFrequency = frequency) {
+  const ac = ensureAudio();
+  if (!ac || ac.state !== 'running') return;
+  const now = ac.currentTime;
+  const oscillator = ac.createOscillator();
+  const gain = ac.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, now);
+  oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, endFrequency), now + duration);
+  gain.gain.setValueAtTime(volume, now);
+  gain.gain.exponentialRampToValueAtTime(.001, now + duration);
+  oscillator.connect(gain).connect(masterGain);
+  oscillator.start(now);
+  oscillator.stop(now + duration);
+}
+
+function noise(duration = .15, volume = .08, cutoff = 1200) {
+  const ac = ensureAudio();
+  if (!ac || ac.state !== 'running') return;
+  const length = Math.floor(ac.sampleRate * duration);
+  const buffer = ac.createBuffer(1, length, ac.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+  const source = ac.createBufferSource();
+  const filter = ac.createBiquadFilter();
+  const gain = ac.createGain();
+  source.buffer = buffer;
+  filter.type = 'lowpass';
+  filter.frequency.value = cutoff;
+  gain.gain.setValueAtTime(volume, ac.currentTime);
+  gain.gain.exponentialRampToValueAtTime(.001, ac.currentTime + duration);
+  source.connect(filter).connect(gain).connect(masterGain);
+  source.start();
+}
+
+function playSound(name) {
+  if (!soundEnabled) return;
+  if (name === 'shoot') tone(760, .07, 'sawtooth', .07, 260);
+  if (name === 'egg') tone(260, .09, 'sine', .025, 150);
+  if (name === 'hit') tone(180 + Math.random() * 60, .07, 'square', .045, 110);
+  if (name === 'chicken') { tone(520, .11, 'square', .055, 760); setTimeout(() => tone(680, .08, 'square', .045, 430), 55); }
+  if (name === 'explosion') { noise(.28, .16, 850); tone(120, .3, 'sawtooth', .08, 35); }
+  if (name === 'food') tone(620, .09, 'sine', .055, 920);
+  if (name === 'gift') { tone(520, .12, 'sine', .07, 780); setTimeout(() => tone(820, .18, 'sine', .06, 1200), 90); }
+  if (name === 'damage') { noise(.4, .2, 600); tone(220, .45, 'sawtooth', .12, 45); }
+  if (name === 'wave') { tone(330, .16, 'square', .06, 440); setTimeout(() => tone(660, .25, 'square', .06, 880), 150); }
+  if (name === 'boss') { tone(95, .65, 'sawtooth', .12, 48); setTimeout(() => noise(.45, .1, 500), 180); }
+  if (name === 'pause') tone(360, .12, 'sine', .05, 220);
+  if (name === 'gameover') { tone(390, .35, 'triangle', .08, 250); setTimeout(() => tone(230, .7, 'triangle', .09, 75), 320); }
+}
+
+function startMusic() {
+  if (musicTimer || !soundEnabled) return;
+  const notes = [110, 165, 147, 196, 110, 220, 165, 147];
+  musicTimer = setInterval(() => {
+    if (running) tone(notes[musicStep++ % notes.length], .2, 'triangle', .018, notes[(musicStep + 2) % notes.length]);
+  }, 270);
+}
+
+function stopMusic() {
+  clearInterval(musicTimer);
+  musicTimer = null;
+}
+
+function updateSoundButton() {
+  const button = document.getElementById('soundBtn');
+  if (!soundEnabled) button.textContent = '🔇 SOUND OFF';
+  else if (!audioCtx || audioCtx.state !== 'running') button.textContent = '🔈 ENABLE SOUND';
+  else button.textContent = '🔊 SOUND ON';
+}
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({ type: 'host-create', hostId: gameId, playerSlot: embedded ? embeddedPlayer : null }));
+};
+
+ws.onmessage = (e) => {
+  const msg = JSON.parse(e.data);
+
+  if (msg.type === 'room-created') {
+    roomCode = msg.room;
+    gameId = msg.room;
+    localStorage.setItem('chickenInvadersGameId', gameId);
+    gameParams.set('id', gameId);
+    history.replaceState(null, '', `${location.pathname}?${gameParams}`);
+    document.getElementById('roomCode').textContent = roomCode;
+    const joinUrl = `http://${msg.ip}:${msg.port}/controller.html?room=${roomCode}`;
+    new QRCode(document.getElementById('qrcode'), { text: joinUrl, width: 160, height: 160 });
+  }
+
+  if (msg.type === 'player-joined') {
+    connectedPlayers.add(msg.playerNum);
+    playerConnected = true;
+    document.getElementById('players').textContent = `${connectedPlayers.size} player${connectedPlayers.size === 1 ? '' : 's'} connected ✅`;
+    document.getElementById('startBtn').disabled = false;
+  }
+
+  if (msg.type === 'player-left') {
+    connectedPlayers.delete(msg.playerNum);
+    playerConnected = connectedPlayers.size > 0;
+    document.getElementById('players').textContent = playerConnected
+      ? `${connectedPlayers.size} player${connectedPlayers.size === 1 ? '' : 's'} connected ✅`
+      : 'Player disconnected. Waiting...';
+    document.getElementById('startBtn').disabled = !playerConnected;
+  }
+
+  if (msg.type === 'input') {
+    if (!embedded && document.getElementById('splitScreen').style.display === 'flex') return;
+    if (embedded && msg.playerNum !== embeddedPlayer) return;
+    handleInput(msg.action, msg.state);
+  }
+};
+
+// ---------- Input state ----------
+const input = { left: false, right: false, up: false, down: false, shoot: false };
+
+function handleInput(action, state) {
+  if (action === 'left') input.left = (state === 'down');
+  if (action === 'right') input.right = (state === 'down');
+  if (action === 'up') input.up = (state === 'down');
+  if (action === 'down') input.down = (state === 'down');
+  if (action === 'start' && state === 'down') toggleGame();
+  if (action === 'shoot') {
+    input.shoot = (state === 'down');
+  }
+}
+
+// ---------- Game setup ----------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const spriteAtlas = new Image();
+spriteAtlas.src = 'assets/arcade-sprites.png';
+const enemyAtlas = new Image();
+enemyAtlas.src = 'assets/animated-enemies.png';
+
+const SPRITES = {
+  chicken: 0, blueChicken: 1, ship: 2, egg: 3,
+  drumstick: 4, gift: 5, explosion: 6, plasma: 7,
+};
+
+function drawSprite(sprite, x, y, w, h, rotation = 0, alpha = 1) {
+  if (!spriteAtlas.complete || !spriteAtlas.naturalWidth) return false;
+  const cellW = spriteAtlas.naturalWidth / 4;
+  const cellH = spriteAtlas.naturalHeight / 2;
+  const col = sprite % 4;
+  const row = Math.floor(sprite / 4);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.rotate(rotation);
+  ctx.drawImage(spriteAtlas, col * cellW, row * cellH, cellW, cellH, -w / 2, -h / 2, w, h);
+  ctx.restore();
+  return true;
+}
+
+function drawEnemySprite(sprite, x, y, w, h, rotation = 0, alpha = 1) {
+  if (!enemyAtlas.complete || !enemyAtlas.naturalWidth) return false;
+  const cellW = enemyAtlas.naturalWidth / 3;
+  const cellH = enemyAtlas.naturalHeight / 2;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.rotate(rotation);
+  ctx.drawImage(enemyAtlas, (sprite % 3) * cellW, Math.floor(sprite / 3) * cellH, cellW, cellH, -w / 2, -h / 2, w, h);
+  ctx.restore();
+  return true;
+}
+
+let running = false;
+let gameActive = false;
+let score = 0;
+let lives = 3;
+let weaponLevel = 1; // care packages upgrade this to 2 or 3 straight shots
+let lastShotAt = 0;
+const SHOT_INTERVAL = 180;
+
+const ship = { x: W / 2 - 20, y: H - 50, w: 40, h: 24, speed: 6 };
+let bullets = [];   // player bullets {x,y}
+let eggs = [];       // enemy projectiles {x,y,vx,vy}
+let turkeys = [];    // pickups {x,y,vy}
+let gifts = [];      // care packages: { type: 'life' | 'weapon' }
+let explosions = [];
+let asteroids = [];
+let chickens = [];   // {x,y,alive,dir,hp}
+let wave = 1;
+let waveMessageUntil = 0;
+let nextWaveAt = 0;
+let bossDefeatedUntil = 0;
+let invulnerableUntil = 0;
+let helpUntil = 0;
+
+const stars = Array.from({ length: 115 }, () => ({
+  x: Math.random() * W,
+  y: Math.random() * H,
+  size: Math.random() * 1.8 + .3,
+  speed: Math.random() * 1.1 + .25,
+  alpha: Math.random() * .75 + .25,
+}));
+
+const ROWS = 4, COLS = 8;
+const CHICK_W = 36, CHICK_H = 28;
+let formationDir = 1;
+let formationSpeed = 0.6;
+let formationDropTimer = 0;
+
+function spawnFormation() {
+  chickens = [];
+  asteroids = [];
+  nextWaveAt = 0;
+
+  // Every fifth wave is the oversized boss chicken.
+  if (wave % 5 === 0) {
+    chickens.push({ x: W / 2 - 105, y: -220, targetX: W / 2 - 105, targetY: 75, w: 210, h: 190, alive: true, hp: 45 + wave * 2, boss: true, entering: true });
+  } else {
+    const pattern = (wave - 1) % 4;
+    const count = pattern === 3 ? 14 : 24;
+    for (let i = 0; i < count; i++) {
+      let targetX, targetY;
+      if (pattern === 0) { // classic rows, dropping in from above
+        targetX = 55 + (i % 8) * 92;
+        targetY = 70 + Math.floor(i / 8) * 72;
+      } else if (pattern === 1) { // wide V formation entering from both sides
+        const col = i % 12;
+        targetX = 45 + col * 64;
+        targetY = 65 + Math.abs(col - 5.5) * 25 + Math.floor(i / 12) * 65;
+      } else if (pattern === 2) { // circular flock
+        const angle = (i / count) * Math.PI * 2;
+        const radius = i % 2 ? 185 : 112;
+        targetX = W / 2 + Math.cos(angle) * radius - 27;
+        targetY = 180 + Math.sin(angle) * radius * .48 - 24;
+      } else { // asteroid escort line
+        targetX = 75 + (i % 7) * 105;
+        targetY = 80 + Math.floor(i / 7) * 95;
+      }
+      chickens.push({
+        x: pattern === 1 ? (i % 2 ? -100 : W + 100) : targetX,
+        y: pattern === 1 ? targetY : -90 - i * 15,
+        targetX, targetY, w: 54, h: 48,
+        flightPhase: i * .37,
+        alive: true, hp: Math.floor(i / 8) === 0 ? 2 : 1,
+        entering: true,
+      });
+    }
+    if (pattern === 3) {
+      for (let i = 0; i < 7; i++) {
+        asteroids.push({ x: 30 + i * 125, y: -100 - i * 90, size: 58 + (i % 3) * 18, vy: 1.2 + i % 2, rotation: 0, vr: (i % 2 ? 1 : -1) * .012, sprite: 4 + i % 2 });
+      }
+    }
+  }
+  waveMessageUntil = Date.now() + 1600;
+  playSound(wave % 5 === 0 ? 'boss' : 'wave');
+}
+
+function fireBullet() {
+  if (!running) return;
+  playSound('shoot');
+  const centerX = ship.x + ship.w / 2 - 2;
+  const offsets = weaponLevel === 1 ? [0] : weaponLevel === 2 ? [-9, 9] : [-15, 0, 15];
+  for (const offset of offsets) bullets.push({ x: centerX + offset, y: ship.y });
+}
+
+function maybeDropTurkey(x, y) {
+  if (Math.random() < 0.15) {
+    turkeys.push({ x, y, vy: 1.5 });
+  }
+  if (Math.random() < 0.06) {
+    gifts.push({ x, y, vy: 1.15, type: Math.random() < 0.35 ? 'life' : 'weapon' });
+  }
+}
+
+function maybeChickenThrowsEgg() {
+  const alive = chickens.filter(c => c.alive);
+  if (alive.length === 0) return;
+  if (Math.random() < 0.02) {
+    const c = alive[Math.floor(Math.random() * alive.length)];
+    eggs.push({ x: c.x + c.w / 2, y: c.y + c.h * .8, vx: (Math.random() - 0.5) * 1.5, vy: c.boss ? 4 : 3 });
+    playSound('egg');
+  }
+}
+
+function damageShip() {
+  if (!running || Date.now() < invulnerableUntil) return;
+  playSound('damage');
+  lives -= 1;
+  invulnerableUntil = Date.now() + 1800;
+  explosions.push({ x: ship.x + ship.w / 2, y: ship.y + ship.h / 2, born: Date.now() });
+  ship.x = W / 2 - ship.w / 2;
+  ship.y = H - 50;
+  eggs = [];
+  if (lives <= 0) endGame();
+}
+
+function getShipHitbox() {
+  // The rendered ship extends beyond its original movement rectangle.
+  return { x: ship.x - 15, y: ship.y - 20, w: ship.w + 30, h: ship.h + 40 };
+}
+
+function overlaps(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function update() {
+  // ship movement
+  if (input.left) ship.x -= ship.speed;
+  if (input.right) ship.x += ship.speed;
+  if (input.up) ship.y -= ship.speed;
+  if (input.down) ship.y += ship.speed;
+  ship.x = Math.max(0, Math.min(W - ship.w, ship.x));
+  ship.y = Math.max(70, Math.min(H - ship.h - 12, ship.y));
+
+  // hold the fire button for continuous shots
+  if (input.shoot && Date.now() - lastShotAt >= SHOT_INTERVAL) {
+    fireBullet();
+    lastShotAt = Date.now();
+  }
+
+  // Chickens fly into each wave's formation before the flock starts drifting.
+  const alive = chickens.filter(c => c.alive);
+  let flockEntering = false;
+  for (const c of alive) {
+    if (!c.entering) continue;
+    c.x += (c.targetX - c.x) * .045;
+    c.y += (c.targetY - c.y) * .045;
+    if (Math.abs(c.targetX - c.x) < 2 && Math.abs(c.targetY - c.y) < 2) {
+      c.x = c.targetX; c.y = c.targetY; c.entering = false;
+    } else {
+      flockEntering = true;
+    }
+  }
+  let hitEdge = false;
+  for (const c of alive) {
+    if (c.entering || flockEntering) continue;
+    c.x += formationDir * (c.boss ? formationSpeed * .6 : formationSpeed);
+    if (c.boss) {
+      // The mother hen periodically dives through the player's flight zone.
+      const dive = Math.pow(Math.max(0, Math.sin(Date.now() / 1400)), 3);
+      c.y = c.targetY + dive * 330;
+    } else {
+      // Regular flocks gently move down and back up around their formation row.
+      const flightY = c.targetY + Math.sin(Date.now() / 900 + c.flightPhase) * 20;
+      c.y += (flightY - c.y) * .08;
+    }
+    if (c.x < 10 || c.x > W - c.w - 10) hitEdge = true;
+  }
+  if (hitEdge) {
+    formationDir *= -1;
+    for (const c of alive) {
+      if (!c.entering) c.x = Math.max(10, Math.min(W - c.w - 10, c.x));
+    }
+  }
+
+  maybeChickenThrowsEgg();
+
+  // bullets
+  bullets.forEach(b => { b.y -= 8; if (b.vx) b.x += b.vx; });
+  bullets = bullets.filter(b => b.y > -10);
+
+  // eggs
+  eggs.forEach(eg => { eg.y += eg.vy; eg.x += eg.vx; eg.vy += 0.03; });
+  eggs = eggs.filter(eg => eg.y < H + 10);
+
+  asteroids.forEach(a => { a.y += a.vy; a.rotation += a.vr; });
+  asteroids = asteroids.filter(a => a.y < H + a.size);
+
+  // turkeys fall
+  turkeys.forEach(t => t.y += t.vy);
+  turkeys = turkeys.filter(t => t.y < H + 10);
+  gifts.forEach(g => g.y += g.vy);
+  gifts = gifts.filter(g => g.y < H + 20);
+  explosions = explosions.filter(ex => Date.now() - ex.born < 420);
+
+  // bullet vs chicken collisions
+  for (const b of bullets) {
+    for (const c of chickens) {
+      if (!c.alive) continue;
+      const bulletHitbox = { x: b.x - 8, y: b.y - 9, w: 20, h: 28 };
+      // Match the enlarged sprite that is actually drawn, especially for the boss.
+      const visibleChickenHitbox = c.boss
+        ? { x: c.x - 18, y: c.y - 16, w: c.w + 36, h: c.h + 32 }
+        : { x: c.x - 10, y: c.y - 10, w: c.w + 20, h: c.h + 20 };
+      if (overlaps(bulletHitbox, visibleChickenHitbox)) {
+        c.hp -= 1;
+        playSound('hit');
+        b.y = -999; // consume bullet
+        if (c.hp <= 0) {
+          c.alive = false;
+          score += 100;
+          const centerX = c.x + c.w / 2;
+          const centerY = c.y + c.h / 2;
+          explosions.push({ x: centerX, y: centerY, born: Date.now(), scale: c.boss ? 2.8 : 1 });
+          if (c.boss) {
+            bossDefeatedUntil = Date.now() + 1500;
+            for (let blast = 0; blast < 10; blast++) {
+              const angle = blast / 10 * Math.PI * 2;
+              explosions.push({
+                x: centerX + Math.cos(angle) * (45 + blast % 3 * 22),
+                y: centerY + Math.sin(angle) * (38 + blast % 2 * 28),
+                born: Date.now() + blast * 55,
+                scale: 1.2 + blast % 3 * .25,
+              });
+            }
+          }
+          playSound(c.boss ? 'explosion' : 'chicken');
+          maybeDropTurkey(c.x, c.y);
+        }
+      }
+    }
+  }
+  bullets = bullets.filter(b => b.y > -20);
+
+  // asteroids can be blasted apart
+  for (const b of bullets) {
+    for (const a of asteroids) {
+      if (b.x > a.x && b.x < a.x + a.size && b.y > a.y && b.y < a.y + a.size) {
+        const hitX = a.x + a.size / 2;
+        const hitY = a.y + a.size / 2;
+        b.y = -999;
+        a.y = H + a.size;
+        score += 75;
+        explosions.push({ x: hitX, y: hitY, born: Date.now() });
+        playSound('explosion');
+        break;
+      }
+    }
+  }
+  bullets = bullets.filter(b => b.y > -20);
+
+  // egg vs ship
+  for (const eg of eggs) {
+    if (overlaps({ x: eg.x - 8, y: eg.y - 11, w: 16, h: 22 }, getShipHitbox())) {
+      eg.y = H + 999;
+      damageShip();
+    }
+  }
+
+  // drumstick vs ship
+  for (const t of turkeys) {
+    if (t.x > ship.x - 10 && t.x < ship.x + ship.w + 10 && t.y > ship.y - 10 && t.y < ship.y + ship.h + 10) {
+      t.y = H + 999;
+      score += 25;
+      playSound('food');
+    }
+  }
+
+  // Care packages either add a life or upgrade straight fire to 2/3 shots.
+  for (const g of gifts) {
+    const dx = g.x - (ship.x + ship.w / 2);
+    const dy = g.y - (ship.y + ship.h / 2);
+    if (dx * dx + dy * dy < 52 * 52) {
+      g.y = H + 999;
+      if (g.type === 'life') lives += 1;
+      else weaponLevel = Math.min(3, weaponLevel + 1);
+      score += 50;
+      playSound('gift');
+    }
+  }
+
+  for (const a of asteroids) {
+    const hitbox = getShipHitbox();
+    const closestX = Math.max(hitbox.x, Math.min(a.x + a.size / 2, hitbox.x + hitbox.w));
+    const closestY = Math.max(hitbox.y, Math.min(a.y + a.size / 2, hitbox.y + hitbox.h));
+    const dx = a.x + a.size / 2 - closestX;
+    const dy = a.y + a.size / 2 - closestY;
+    if (dx * dx + dy * dy < (a.size * .36) ** 2) damageShip();
+  }
+
+  // next wave
+  if (chickens.length && chickens.every(c => !c.alive) && !nextWaveAt) {
+    nextWaveAt = Date.now() + (wave % 5 === 0 ? 1500 : 450);
+  }
+  if (nextWaveAt && Date.now() >= nextWaveAt) {
+    wave += 1;
+    formationSpeed += 0.15;
+    spawnFormation();
+  }
+
+  // chickens reach ship
+  for (const c of chickens) {
+    if (!c.alive) continue;
+    const chickenHitbox = c.boss
+      ? { x: c.x - 20, y: c.y - 12, w: c.w + 40, h: c.h + 28 }
+      : { x: c.x - 7, y: c.y - 6, w: c.w + 14, h: c.h + 12 };
+    if (overlaps(chickenHitbox, getShipHitbox())) damageShip();
+  }
+
+  document.getElementById('scoreDisplay').textContent = String(score).padStart(6, '0');
+  document.getElementById('livesDisplay').textContent = `${'♥ '.repeat(Math.max(0, lives)).trim()}`;
+  document.getElementById('powerDisplay').textContent = weaponLevel > 1 ? `⚡ ${weaponLevel} STRAIGHT SHOTS` : `WAVE ${wave}`;
+}
+
+function draw() {
+  // layered deep-space backdrop
+  const space = ctx.createRadialGradient(W * .48, H * .4, 20, W * .5, H * .5, H * .78);
+  space.addColorStop(0, '#17356b');
+  space.addColorStop(.42, '#091536');
+  space.addColorStop(1, '#01030b');
+  ctx.fillStyle = space;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(116, 47, 164, .1)';
+  ctx.beginPath();
+  ctx.ellipse(W * .28, H * .32, 270, 105, -.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (const star of stars) {
+    star.y += star.speed;
+    if (star.y > H) { star.y = -3; star.x = Math.random() * W; }
+    ctx.globalAlpha = star.alpha;
+    ctx.fillStyle = star.size > 1.45 ? '#9fcaff' : '#fff';
+    ctx.fillRect(star.x, star.y, star.size, star.size);
+  }
+  ctx.globalAlpha = 1;
+
+  // enemies
+  chickens.forEach((c, index) => {
+    if (!c.alive) return;
+    const bob = Math.sin(Date.now() / 180 + index) * 2;
+    const flapFrame = Math.floor(Date.now() / 115 + index) % 3;
+    if (c.boss) {
+      drawEnemySprite(3, c.x - 18, c.y - 16 + bob, c.w + 36, c.h + 32);
+    } else {
+      drawEnemySprite(flapFrame, c.x - 10, c.y - 10 + bob, c.w + 20, c.h + 20);
+    }
+  });
+
+  asteroids.forEach(a => drawEnemySprite(a.sprite, a.x, a.y, a.size, a.size, a.rotation));
+
+  // player shots and enemy eggs
+  bullets.forEach(b => {
+    ctx.shadowColor = '#ff3b23';
+    ctx.shadowBlur = 13;
+    drawSprite(SPRITES.plasma, b.x - 8, b.y - 9, 20, 28);
+    ctx.shadowBlur = 0;
+  });
+  eggs.forEach(eg => drawSprite(SPRITES.egg, eg.x - 11, eg.y - 13, 22, 28, Math.sin(eg.y * .04) * .15));
+
+  // collectibles
+  turkeys.forEach(t => drawSprite(SPRITES.drumstick, t.x - 18, t.y - 18, 36, 36, t.y * .012));
+  gifts.forEach(g => {
+    drawSprite(SPRITES.gift, g.x - 21, g.y - 21, 42, 42, Math.sin(g.y * .025) * .12);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillStyle = g.type === 'life' ? '#ff3659' : '#ffea45';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(g.type === 'life' ? '♥' : `×${Math.min(3, weaponLevel + 1)}`, g.x, g.y + 5);
+    ctx.restore();
+  });
+
+  // ship and destruction flashes
+  ctx.shadowColor = '#26aaff';
+  ctx.shadowBlur = 18;
+  const shipVisible = Date.now() >= invulnerableUntil || Math.floor(Date.now() / 90) % 2 === 0;
+  if (shipVisible) drawSprite(SPRITES.ship, ship.x - 25, ship.y - 34, ship.w + 50, ship.h + 58);
+  ctx.shadowBlur = 0;
+  explosions.forEach(ex => {
+    if (Date.now() < ex.born) return;
+    const age = (Date.now() - ex.born) / 420;
+    const size = (45 + age * 70) * (ex.scale || 1);
+    drawSprite(SPRITES.explosion, ex.x - size / 2, ex.y - size / 2, size, size, 0, 1 - age);
+  });
+
+  if (Date.now() < bossDefeatedUntil) {
+    const remaining = bossDefeatedUntil - Date.now();
+    ctx.save();
+    ctx.globalAlpha = Math.min(.42, remaining / 900);
+    ctx.fillStyle = remaining % 180 < 90 ? '#fff' : '#ff9b23';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = Math.min(1, remaining / 350);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 30px Courier New';
+    ctx.fillStyle = '#ffdc35';
+    ctx.shadowColor = '#ff3b23';
+    ctx.shadowBlur = 18;
+    ctx.fillText('MOTHER HEN DEFEATED!', W / 2, H * .48);
+    ctx.restore();
+  }
+
+  if (Date.now() < waveMessageUntil) {
+    const fade = Math.min(1, (waveMessageUntil - Date.now()) / 350);
+    ctx.save();
+    ctx.globalAlpha = fade;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 28px Courier New';
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = '#4b9fff';
+    ctx.shadowBlur = 14;
+    ctx.fillText(`WAVE ${wave}`, W / 2, H * .52);
+    ctx.font = 'bold 13px Courier New';
+    ctx.fillStyle = '#ffdf55';
+    ctx.fillText('THE INVASION CONTINUES', W / 2, H * .52 + 24);
+    ctx.restore();
+  }
+
+  if (Date.now() < helpUntil) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, (helpUntil - Date.now()) / 500);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 13px Courier New';
+    ctx.fillStyle = '#ff6575';
+    ctx.fillText('AVOID  EGGS • CHICKENS • ASTEROIDS', W / 2, H - 45);
+    ctx.fillStyle = '#73ff91';
+    ctx.fillText('COLLECT  DRUMSTICKS • CARE PACKAGES', W / 2, H - 25);
+    ctx.restore();
+  }
+
+  // HUD lives inside the playfield, matching the edge-mounted arcade layout.
+  ctx.save();
+  ctx.font = 'bold 22px Courier New';
+  ctx.shadowColor = '#000';
+  ctx.shadowBlur = 5;
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'left';
+  ctx.fillText(`WAVE ${wave}`, 18, 31);
+  if (weaponLevel > 1) {
+    ctx.font = 'bold 14px Courier New';
+    ctx.fillStyle = '#ffdc35';
+    ctx.fillText(`⚡ ${weaponLevel} STRAIGHT SHOTS`, 18, 53);
+  }
+  if (Date.now() < invulnerableUntil) {
+    ctx.font = 'bold 14px Courier New';
+    ctx.fillStyle = '#65d9ff';
+    ctx.fillText('◆ SHIELD', 18, weaponLevel > 1 ? 72 : 53);
+  }
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 22px Courier New';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(String(score).padStart(7, '0'), W - 82, 31);
+  ctx.fillStyle = '#ff2e48';
+  ctx.font = 'bold 24px Arial';
+  ctx.fillText('♥'.repeat(Math.max(0, lives)), W - 16, 31);
+  ctx.restore();
+}
+
+function endGame() {
+  running = false;
+  gameActive = false;
+  stopMusic();
+  playSound('gameover');
+  document.getElementById('finalScore').textContent = `Final Score: ${score}`;
+  document.getElementById('gameOverOverlay').style.display = 'flex';
+}
+
+function loop() {
+  if (!running) return;
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function requestGameFullscreen() {
+  ensureAudio();
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    return;
+  }
+  const root = document.documentElement;
+  const request = root.requestFullscreen || root.webkitRequestFullscreen;
+  if (!request) return;
+  try {
+    const result = request.call(root);
+    if (result?.catch) result.catch(() => {});
+  } catch {}
+}
+
+function startGame() {
+  const lobby = document.getElementById('lobby');
+  if (running) return;
+
+  if (!embedded && connectedPlayers.size >= 2) {
+    startSplitScreen();
+    return;
+  }
+
+  requestGameFullscreen();
+
+  score = 0;
+  lives = 3;
+  weaponLevel = 1;
+  lastShotAt = 0;
+  bullets = [];
+  eggs = [];
+  turkeys = [];
+  gifts = [];
+  explosions = [];
+  asteroids = [];
+  wave = 1;
+  nextWaveAt = 0;
+  bossDefeatedUntil = 0;
+  invulnerableUntil = 0;
+  helpUntil = Date.now() + 6000;
+  formationDir = 1;
+  formationSpeed = 0.6;
+  formationDropTimer = 0;
+  ship.x = W / 2 - ship.w / 2;
+  ship.y = H - 50;
+  input.left = false;
+  input.right = false;
+  input.up = false;
+  input.down = false;
+  input.shoot = false;
+
+  lobby.style.display = 'none';
+  document.getElementById('gameOverOverlay').style.display = 'none';
+  document.getElementById('pauseOverlay').style.display = 'none';
+  document.getElementById('hud').style.display = 'flex';
+  document.getElementById('scoreDisplay').textContent = '000000';
+  document.getElementById('livesDisplay').textContent = '♥ ♥ ♥';
+  document.getElementById('powerDisplay').textContent = '';
+  canvas.style.display = 'block';
+  spawnFormation();
+  gameActive = true;
+  running = true;
+  startMusic();
+  loop();
+}
+
+function startSplitScreen() {
+  requestGameFullscreen();
+  stopMusic();
+  gameActive = true;
+  running = false;
+  document.getElementById('lobby').style.display = 'none';
+  document.getElementById('gameOverOverlay').style.display = 'none';
+  document.getElementById('pauseOverlay').style.display = 'none';
+  canvas.style.display = 'none';
+  const split = document.getElementById('splitScreen');
+  split.innerHTML = '';
+  split.style.display = 'flex';
+  for (const playerNum of [1, 2]) {
+    const frame = document.createElement('iframe');
+    frame.title = `Player ${playerNum}`;
+    frame.src = `${location.pathname}?id=${encodeURIComponent(gameId)}&embedded=1&player=${playerNum}`;
+    frame.addEventListener('load', () => frame.contentWindow.postMessage({ type: 'start-game' }, location.origin));
+    split.appendChild(frame);
+  }
+}
+
+window.addEventListener('message', (event) => {
+  if (!embedded || event.origin !== location.origin || event.data?.type !== 'start-game') return;
+  startGame();
+});
+
+function toggleGame() {
+  if (!gameActive) {
+    startGame();
+    return;
+  }
+
+  running = !running;
+  playSound('pause');
+  document.getElementById('pauseOverlay').style.display = running ? 'none' : 'flex';
+  if (!running) {
+    input.left = false;
+    input.right = false;
+    input.up = false;
+    input.down = false;
+    input.shoot = false;
+  } else {
+    startMusic();
+    loop();
+  }
+}
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('playAgainBtn').addEventListener('click', startGame);
+document.getElementById('fullscreenLobbyBtn').addEventListener('click', requestGameFullscreen);
+document.getElementById('soundBtn').addEventListener('click', () => {
+  if (soundEnabled && (!audioCtx || audioCtx.state !== 'running')) {
+    ensureAudio();
+    if (running) startMusic();
+    tone(660, .12, 'sine', .06, 880);
+    return;
+  }
+  soundEnabled = !soundEnabled;
+  localStorage.setItem('chickenInvadersSound', soundEnabled ? 'on' : 'off');
+  updateSoundButton();
+  if (soundEnabled) {
+    ensureAudio();
+    if (running) startMusic();
+    tone(660, .12, 'sine', .06, 880);
+  } else {
+    stopMusic();
+  }
+});
+updateSoundButton();
+</script>
+</body>
+</html>

@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <title>Chicken Invaders — Controller</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #000;
+        touch-action: none;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-user-drag: none;
+        touch-action: none;
+      }
+      html,
+      body {
+        height: 100%;
+        background: radial-gradient(
+          circle at 50% 25%,
+          #30343b 0,
+          #111318 48%,
+          #08090b 100%
+        );
+        color: #fff;
+        font-family: "Courier New", monospace;
+        overflow: hidden;
+        touch-action: none;
+      }
+      #status {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        text-align: center;
+        padding: max(7px, env(safe-area-inset-top)) 12px 7px;
+        font-size: 12px;
+        background: rgba(0, 0, 0, 0.72);
+        z-index: 5;
+      }
+      #status.connected {
+        color: #4dff4d;
+      }
+      #status.error {
+        color: #ff4444;
+      }
+
+      #joinScreen {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 20px;
+      }
+      #joinScreen input {
+        font-size: 28px;
+        text-align: center;
+        letter-spacing: 6px;
+        padding: 10px;
+        width: 180px;
+        text-transform: uppercase;
+        border-radius: 8px;
+        border: none;
+      }
+      #joinScreen button {
+        font-size: 18px;
+        padding: 12px 24px;
+        background: #ffcc00;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+      }
+
+      #controls {
+        display: none;
+        height: 100%;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+        padding: 38px max(18px, env(safe-area-inset-right)) 10px
+          max(18px, env(safe-area-inset-left));
+      }
+      .gamepad {
+        position: relative;
+        width: min(92vw, 760px);
+        height: min(76vh, 330px);
+        min-height: 220px;
+        display: grid;
+        grid-template-columns: 1fr 0.78fr 1fr;
+        align-items: center;
+        padding: 28px 7%;
+        background: linear-gradient(
+          145deg,
+          #363a42 0%,
+          #17191e 48%,
+          #0d0e12 100%
+        );
+        border: 2px solid #4a4e57;
+        border-radius: 34% 34% 25% 25% / 25% 25% 42% 42%;
+        box-shadow:
+          inset 0 3px 5px rgba(255, 255, 255, 0.16),
+          inset 0 -10px 18px #050607,
+          0 18px 35px rgba(0, 0, 0, 0.65);
+      }
+      .grip {
+        position: absolute;
+        bottom: -5%;
+        width: 28%;
+        height: 52%;
+        background: linear-gradient(160deg, #24272e, #101216);
+        z-index: -1;
+      }
+      .grip.left {
+        left: 2%;
+        transform: rotate(10deg);
+        border-radius: 35% 20% 55% 50%;
+      }
+      .grip.right {
+        right: 2%;
+        transform: rotate(-10deg);
+        border-radius: 20% 35% 50% 55%;
+      }
+      .btn,
+      .decor-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: #fff;
+        background: linear-gradient(145deg, #363a42, #17191e);
+        border: 2px solid #555b66;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.15),
+          0 4px 7px rgba(0, 0, 0, 0.7);
+      }
+      .btn.active {
+        transform: scale(0.94);
+        background: linear-gradient(145deg, #ffc400, #a76a00);
+        color: #17120a;
+        box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.65);
+      }
+      .dpad {
+        position: relative;
+        width: clamp(128px, 20vw, 174px);
+        aspect-ratio: 1;
+        justify-self: start;
+      }
+      .dpad::before,
+      .dpad::after {
+        content: "";
+        position: absolute;
+        background: linear-gradient(145deg, #343840, #15171b);
+        border: 2px solid #50545d;
+        box-shadow: 0 5px 8px #08090b;
+        border-radius: 9px;
+      }
+      .dpad::before {
+        left: 33%;
+        top: 0;
+        width: 34%;
+        height: 100%;
+      }
+      .dpad::after {
+        left: 0;
+        top: 33%;
+        width: 100%;
+        height: 34%;
+      }
+      .dpad-center {
+        position: absolute;
+        inset: 36%;
+        z-index: 2;
+        border-radius: 50%;
+        background: #181a1f;
+        box-shadow: inset 0 2px 5px #07080a;
+      }
+      .dpad .btn,
+      .dpad .decor-button {
+        position: absolute;
+        z-index: 3;
+        width: 32%;
+        height: 30%;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        font-size: clamp(20px, 4vw, 32px);
+        color: #8d929c;
+      }
+      #leftBtn {
+        left: 1%;
+        top: 35%;
+      }
+      #rightBtn {
+        right: 1%;
+        top: 35%;
+      }
+      .dpad-up {
+        left: 34%;
+        top: 1%;
+      }
+      .dpad-down {
+        left: 34%;
+        bottom: 1%;
+      }
+      .center-panel {
+        align-self: center;
+        text-align: center;
+        color: #858b96;
+        font:
+          700 clamp(8px, 1.4vw, 12px) Arial,
+          sans-serif;
+        letter-spacing: 2px;
+      }
+      .touchpad {
+        width: 100%;
+        height: clamp(48px, 11vh, 76px);
+        margin-bottom: 12px;
+        border: 2px solid #444952;
+        border-radius: 8px;
+        background: radial-gradient(#252931 1px, #111318 1px);
+        background-size: 4px 4px;
+        box-shadow: inset 0 2px 8px #050607;
+      }
+      #startControl {
+        width: min(100%, 92px);
+        margin: 0 auto 8px;
+        padding: 7px 10px;
+        border-radius: 999px;
+        font:
+          700 clamp(9px, 1.5vw, 12px) Arial,
+          sans-serif;
+        letter-spacing: 1px;
+      }
+      .face-buttons {
+        position: relative;
+        width: clamp(132px, 21vw, 184px);
+        aspect-ratio: 1;
+        justify-self: end;
+      }
+      .face-buttons .btn,
+      .face-buttons .decor-button {
+        position: absolute;
+        width: 36%;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        font:
+          bold clamp(18px, 3.5vw, 28px) Arial,
+          sans-serif;
+      }
+      .face-right {
+        right: 0;
+        top: 32%;
+        color: #ff6374;
+        border-color: #8d4650;
+      }
+      .face-top {
+        top: 0;
+        left: 32%;
+        color: #55cdd2;
+      }
+      .face-left {
+        top: 32%;
+        left: 0;
+        color: #dc82d8;
+      }
+      .face-bottom {
+        bottom: 0;
+        left: 32%;
+        color: #8d9cff;
+      }
+      #rotatePrompt {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 16px;
+        background: #101216;
+        font:
+          bold 18px Arial,
+          sans-serif;
+      }
+      #rotatePrompt .phone {
+        font-size: 54px;
+        transform: rotate(90deg);
+      }
+      @media (orientation: portrait) {
+        #controls.active + #rotatePrompt {
+          display: flex;
+        }
+      }
+      @media (max-height: 300px) {
+        .gamepad {
+          height: 82vh;
+          min-height: 180px;
+        }
+        .center-panel {
+          transform: scale(0.88);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">Connecting...</div>
+
+    <div id="joinScreen">
+      <h2>Join Room</h2>
+      <input
+        id="roomInput"
+        maxlength="4"
+        placeholder="CODE"
+        autocomplete="off"
+      />
+      <button id="joinBtn">Join</button>
+    </div>
+
+    <div id="controls">
+      <div class="gamepad">
+        <div class="grip left"></div>
+        <div class="grip right"></div>
+        <div class="dpad" aria-label="Movement controls">
+          <div class="btn dpad-up" id="upBtn" aria-label="Move up">▲</div>
+          <div class="btn" id="leftBtn" aria-label="Move left">◀</div>
+          <div class="dpad-center"></div>
+          <div class="btn" id="rightBtn" aria-label="Move right">▶</div>
+          <div class="btn dpad-down" id="downBtn" aria-label="Move down">▼</div>
+        </div>
+        <div class="center-panel">
+          <div class="touchpad"></div>
+          <div
+            class="btn"
+            id="startControl"
+            aria-label="Start, pause, or resume game"
+          >
+            START
+          </div>
+          CHICKEN<br />INVADERS
+        </div>
+        <div class="face-buttons" aria-label="Action controls">
+          <div class="decor-button face-top">△</div>
+          <div class="decor-button face-left">□</div>
+          <div class="decor-button face-right">○</div>
+          <div class="btn face-bottom" id="primaryBtn" aria-label="Shoot">
+            ×
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="rotatePrompt">
+      <div class="phone">▯</div>
+      <div>Rotate your phone to play</div>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const prefilledRoom = params.get("room");
+      let controllerId = localStorage.getItem("chickenInvadersControllerId");
+      if (!controllerId) {
+        controllerId = crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem("chickenInvadersControllerId", controllerId);
+      }
+      let joinRequested = false;
+
+      const ws = new WebSocket(`ws://${location.host}`);
+      const statusEl = document.getElementById("status");
+
+      ws.onopen = () => {
+        statusEl.textContent = "Connected to server";
+        statusEl.className = "connected";
+        if (prefilledRoom) {
+          joinRoom(prefilledRoom);
+        }
+      };
+
+      ws.onclose = () => {
+        statusEl.textContent = "Disconnected";
+        statusEl.className = "error";
+      };
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "joined") {
+          joinRequested = true;
+          statusEl.textContent = `Joined room ${msg.room} — you are Player ${msg.playerNum}`;
+          document.getElementById("joinScreen").style.display = "none";
+          const controls = document.getElementById("controls");
+          controls.style.display = "flex";
+          controls.classList.add("active");
+          if (screen.orientation?.lock)
+            screen.orientation.lock("landscape").catch(() => {});
+        }
+        if (msg.type === "join-error") {
+          joinRequested = false;
+          statusEl.textContent = msg.message;
+          statusEl.className = "error";
+        }
+      };
+
+      function joinRoom(code) {
+        if (joinRequested || ws.readyState !== WebSocket.OPEN) return;
+        joinRequested = true;
+        ws.send(JSON.stringify({
+          type: "join",
+          room: code.toUpperCase(),
+          controllerId,
+        }));
+      }
+
+      document.getElementById("joinBtn").addEventListener("click", () => {
+        const code = document.getElementById("roomInput").value.trim();
+        if (code.length === 4) joinRoom(code);
+      });
+      if (prefilledRoom)
+        document.getElementById("roomInput").value = prefilledRoom;
+
+      // Prevent iOS Chrome/Safari from treating controller gestures as page gestures.
+      document.addEventListener("contextmenu", (e) => e.preventDefault());
+      document.addEventListener("dblclick", (e) => e.preventDefault(), {
+        passive: false,
+      });
+      document.addEventListener("gesturestart", (e) => e.preventDefault(), {
+        passive: false,
+      });
+      document.addEventListener("gesturechange", (e) => e.preventDefault(), {
+        passive: false,
+      });
+      document.addEventListener("gestureend", (e) => e.preventDefault(), {
+        passive: false,
+      });
+      document.addEventListener("touchmove", (e) => e.preventDefault(), {
+        passive: false,
+      });
+
+      // ---------- button handling ----------
+      function bindButton(el, action) {
+        const send = (state) => {
+          ws.send(JSON.stringify({ type: "input", action, state }));
+          el.classList.toggle("active", state === "down");
+        };
+        el.addEventListener(
+          "touchstart",
+          (e) => {
+            e.preventDefault();
+            send("down");
+          },
+          { passive: false },
+        );
+        el.addEventListener(
+          "touchend",
+          (e) => {
+            e.preventDefault();
+            send("up");
+          },
+          { passive: false },
+        );
+        el.addEventListener(
+          "touchcancel",
+          (e) => {
+            e.preventDefault();
+            send("up");
+          },
+          { passive: false },
+        );
+        // mouse fallback for desktop testing
+        el.addEventListener("mousedown", () => send("down"));
+        el.addEventListener("mouseup", () => send("up"));
+        el.addEventListener("mouseleave", () => send("up"));
+      }
+
+      bindButton(document.getElementById("leftBtn"), "left");
+      bindButton(document.getElementById("rightBtn"), "right");
+      bindButton(document.getElementById("upBtn"), "up");
+      bindButton(document.getElementById("downBtn"), "down");
+      bindButton(document.getElementById("primaryBtn"), "shoot");
+      bindButton(document.getElementById("startControl"), "start");
+    </script>
+  </body>
+</html>

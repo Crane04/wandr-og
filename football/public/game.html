@@ -1,0 +1,1985 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Football</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+        color: #fff;
+        font-family: "Courier New", monospace;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        gap: 14px;
+      }
+      #lobby {
+        text-align: center;
+      }
+      #lobby h1 {
+        color: #4dff4d;
+        letter-spacing: 2px;
+        margin-bottom: 8px;
+      }
+      #roomCode {
+        font-size: 44px;
+        letter-spacing: 8px;
+        color: #ffcc00;
+        margin: 10px 0;
+      }
+      #qrcode {
+        background: #fff;
+        padding: 10px;
+        display: inline-block;
+        border-radius: 8px;
+      }
+      #teams {
+        margin-top: 10px;
+        display: flex;
+        gap: 24px;
+        justify-content: center;
+      }
+      .teamStatus {
+        padding: 6px 14px;
+        border-radius: 6px;
+        background: #222;
+      }
+      .teamStatus.ready {
+        background: #225522;
+      }
+      .lobbyAction {
+        margin-top: 18px;
+        padding: 12px 28px;
+        font-size: 18px;
+        background: #ffcc00;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+      }
+      .lobbyAction + .lobbyAction {
+        margin-left: 10px;
+        background: #4dff4d;
+      }
+      .lobbyAction:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      canvas {
+        background: #1a5c2a;
+        border: 2px solid #333;
+        display: none;
+      }
+      #hud {
+        display: none;
+        justify-content: space-between;
+        width: 900px;
+        font-size: 22px;
+        color: #fff;
+      }
+      #hud .a {
+        color: #66ccff;
+      }
+      #hud .b {
+        color: #ff6666;
+      }
+      #gameOverOverlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        z-index: 10;
+      }
+      #gameOverOverlay h2 {
+        color: #ffcc00;
+        font-size: 36px;
+      }
+      #gameOverOverlay button {
+        padding: 10px 24px;
+        font-size: 16px;
+        background: #4dff4d;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+      }
+      #pauseOverlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.68);
+        align-items: center;
+        justify-content: center;
+        z-index: 9;
+        pointer-events: none;
+      }
+      #pauseOverlay h2 {
+        color: #ffcc00;
+        font-size: 42px;
+        letter-spacing: 4px;
+        text-shadow: 0 3px 8px #000;
+      }
+      #goalOverlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.58);
+        align-items: center;
+        justify-content: center;
+        z-index: 8;
+        pointer-events: none;
+      }
+      #goalOverlay h2 {
+        color: #ffcc00;
+        font-size: 52px;
+        letter-spacing: 3px;
+        text-shadow: 0 4px 10px #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="lobby">
+      <h1>⚽ FOOTBALL ⚽</h1>
+      <p>Scan to join — first phone is Team A (blue), second is Team B (red)</p>
+      <div id="roomCode">----</div>
+      <div id="qrcode"></div>
+      <div id="teams">
+        <div class="teamStatus" id="teamAStatus">Team A: waiting</div>
+        <div class="teamStatus" id="teamBStatus">Team B: waiting</div>
+      </div>
+      <div>
+        <button class="lobbyAction" id="startBtn" disabled>
+          Two Players
+        </button>
+        <button class="lobbyAction" id="aiBtn" disabled>Play vs AI</button>
+      </div>
+    </div>
+
+    <div id="hud">
+      <span class="a" id="scoreA">Team A: 0</span>
+      <span id="clock">05:00</span>
+      <span class="b" id="scoreB">Team B: 0</span>
+    </div>
+    <canvas id="game" width="900" height="560"></canvas>
+
+    <div id="gameOverOverlay">
+      <h2 id="finalResult"></h2>
+      <button onclick="location.reload()">Play Again</button>
+    </div>
+    <div id="pauseOverlay"><h2>PAUSED</h2></div>
+    <div id="goalOverlay"><h2 id="goalMessage">GOAL!</h2></div>
+
+    <script>
+      const ws = new WebSocket(`ws://${location.host}`);
+      let roomCode = null;
+      let teamAReady = false,
+        teamBReady = false;
+      let aiMode = false;
+      let gameStarted = false;
+      let paused = false;
+      let goalCelebration = false;
+      let audioContext = null;
+
+      function ensureAudio() {
+        if (!audioContext) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return null;
+          audioContext = new AudioContext();
+        }
+        if (audioContext.state === "suspended") audioContext.resume();
+        return audioContext;
+      }
+
+      function soundTone(frequency, duration, volume, type = "sine", delay = 0) {
+        const audio = ensureAudio();
+        if (!audio) return;
+        const start = audio.currentTime + delay;
+        const boostedVolume = Math.min(0.68, volume * 3);
+        const oscillator = audio.createOscillator();
+        const gain = audio.createGain();
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(boostedVolume, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+        oscillator.connect(gain);
+        gain.connect(audio.destination);
+        oscillator.start(start);
+        oscillator.stop(start + duration + 0.02);
+      }
+
+      function playSound(name) {
+        if (name === "kick") {
+          soundTone(105, 0.09, 0.18, "triangle");
+          soundTone(62, 0.07, 0.12, "sine", 0.015);
+        } else if (name === "save") {
+          soundTone(155, 0.12, 0.13, "square");
+          soundTone(95, 0.16, 0.1, "triangle", 0.035);
+        } else if (name === "whistle") {
+          soundTone(1250, 0.28, 0.1, "sine");
+          soundTone(1500, 0.22, 0.07, "sine", 0.06);
+        } else if (name === "goal") {
+          [392, 523, 659, 784].forEach((frequency, index) =>
+            soundTone(frequency, 0.36, 0.1, "triangle", index * 0.09),
+          );
+        }
+      }
+
+      document.addEventListener("pointerdown", ensureAudio, { once: true });
+
+      const gameParams = new URLSearchParams(location.search);
+      const requestedId = (
+        gameParams.get("id") ||
+        localStorage.getItem("footballGameId") ||
+        ""
+      ).toUpperCase();
+      let gameId = /^[A-Z2-9]{4}$/.test(requestedId) ? requestedId : null;
+
+      function updateLobbyButtons() {
+        document.getElementById("startBtn").disabled = !(
+          teamAReady && teamBReady
+        );
+        document.getElementById("aiBtn").disabled = !teamAReady || teamBReady;
+      }
+
+      ws.onopen = () =>
+        ws.send(JSON.stringify({ type: "host-create", hostId: gameId }));
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+
+        if (msg.type === "room-created") {
+          roomCode = msg.room;
+          gameId = msg.room;
+          localStorage.setItem("footballGameId", gameId);
+          gameParams.set("id", gameId);
+          history.replaceState(null, "", `${location.pathname}?${gameParams}`);
+          document.getElementById("roomCode").textContent = roomCode;
+          const joinUrl = `http://${msg.ip}:${msg.port}/controller.html?room=${roomCode}`;
+          new QRCode(document.getElementById("qrcode"), {
+            text: joinUrl,
+            width: 150,
+            height: 150,
+          });
+        }
+
+        if (msg.type === "player-joined") {
+          if (msg.team === "A") {
+            teamAReady = true;
+            document.getElementById("teamAStatus").textContent =
+              "Team A: connected ✅";
+            document.getElementById("teamAStatus").classList.add("ready");
+          }
+          if (msg.team === "B") {
+            teamBReady = true;
+            document.getElementById("teamBStatus").textContent =
+              "Team B: connected ✅";
+            document.getElementById("teamBStatus").classList.add("ready");
+          }
+          updateLobbyButtons();
+        }
+
+        if (msg.type === "player-left") {
+          if (msg.team === "A") {
+            teamAReady = false;
+            document.getElementById("teamAStatus").textContent =
+              "Team A: waiting";
+            document.getElementById("teamAStatus").classList.remove("ready");
+          }
+          if (msg.team === "B") {
+            teamBReady = false;
+            document.getElementById("teamBStatus").textContent =
+              "Team B: waiting";
+            document.getElementById("teamBStatus").classList.remove("ready");
+          }
+          const departedInput = input[msg.team];
+          if (departedInput) {
+            departedInput.joy = { x: 0, y: 0 };
+            for (const button of Object.values(departedInput.buttons)) {
+              button.state = "up";
+              button.previous = "up";
+            }
+          }
+          updateLobbyButtons();
+        }
+
+        if (msg.type === "input") {
+          const inp = input[msg.team];
+          if (!inp) return;
+          const lobbyOpen =
+            document.getElementById("lobby").style.display !== "none";
+          if (msg.button === "start" && msg.state === "down") {
+            if (!gameStarted && lobbyOpen) {
+              if (teamAReady && teamBReady) {
+                startGame(false);
+              } else if (msg.team === "A" && teamAReady) {
+                startGame(true);
+              }
+            } else if (gameStarted && !goalCelebration) {
+              togglePause();
+            }
+            return;
+          }
+          if (msg.joystick) inp.joy = msg.joystick;
+          if (msg.button && inp.buttons[msg.button]) {
+            inp.buttons[msg.button].state = msg.state;
+          }
+          // Support controllers opened before this update as the × button.
+          if (msg.action) inp.buttons.shortPass.state = msg.action;
+        }
+      };
+
+      // ---------- Input state per team ----------
+      function makeInput() {
+        return {
+          joy: { x: 0, y: 0 },
+          buttons: Object.fromEntries(
+            ["shortPass", "cross", "longPass", "shoot"].map((name) => [
+              name,
+              { state: "up", previous: "up" },
+            ]),
+          ),
+        };
+      }
+      const input = { A: makeInput(), B: makeInput() };
+      const manualActivePlayer = { A: null, B: null };
+
+      // ---------- Field setup ----------
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const playerSprites = new Image();
+      let playerSpritesReady = false;
+      playerSprites.onload = () => {
+        playerSpritesReady = true;
+      };
+      playerSprites.src = "assets/player-sprites-animated.png";
+      const W = canvas.width,
+        H = canvas.height;
+      const GOAL_Y1 = H / 2 - 60,
+        GOAL_Y2 = H / 2 + 60;
+      const GOAL_DEPTH = 18;
+      const AI_SHOOT_RANGE = 320;
+
+      let running = false;
+      let scoreA = 0,
+        scoreB = 0;
+      let matchSeconds = 300;
+      let lastTick = Date.now();
+      const looseBallTracker = { x: W / 2, y: H / 2, frames: 0 };
+      const penaltyState = {
+        active: false,
+        turn: "A",
+        kicks: { A: 0, B: 0 },
+        goals: { A: 0, B: 0 },
+        suddenDeath: false,
+        phase: "ready",
+        timer: 0,
+        charge: 0,
+        previousAction: "up",
+        aimX: W / 2,
+        aimY: 105,
+        keeperX: W / 2,
+        keeperTargetX: W / 2,
+        shot: null,
+        result: "",
+        aiTimer: 0,
+      };
+
+      const ball = {
+        x: W / 2,
+        y: H / 2,
+        vx: 0,
+        vy: 0,
+        r: 7,
+        owner: null,
+        interceptable: true,
+        controlFrames: 0,
+      };
+      const kickoffState = {
+        active: false,
+        team: null,
+        player: null,
+        startX: 0,
+        startY: 0,
+      };
+
+      function makePlayer(team, role, hx, hy) {
+        return {
+          team,
+          role,
+          x: hx,
+          y: hy,
+          homeX: hx,
+          homeY: hy,
+          vx: 0,
+          vy: 0,
+          r: 11,
+          speed: role === "GK" ? 1.45 : 1.4,
+          kickCooldown: 0,
+          tackleCooldown: 0,
+          keeperReaction: 0,
+          keeperTargetY: hy,
+          keeperHoldFrames: 0,
+          stamina: 100,
+          animationPhase: 0,
+          kickAnimation: 0,
+          isMoving: false,
+          active: false,
+          facing: team === "A" ? 0 : Math.PI,
+        };
+      }
+
+      let players = [];
+
+      function setupTeams() {
+        players = [];
+        manualActivePlayer.A = null;
+        manualActivePlayer.B = null;
+        // Team A attacks toward right (positive x), defends left goal
+        players.push(makePlayer("A", "GK", 40, H / 2));
+        players.push(makePlayer("A", "DEF", 150, H / 2));
+        players.push(makePlayer("A", "MID", 280, H / 2 - 105));
+        players.push(makePlayer("A", "WING", 285, H / 2 + 110));
+        players.push(makePlayer("A", "ATT", 400, H / 2));
+
+        // Team B attacks toward left (negative x), defends right goal
+        players.push(makePlayer("B", "GK", W - 40, H / 2));
+        players.push(makePlayer("B", "DEF", W - 150, H / 2));
+        players.push(makePlayer("B", "MID", W - 280, H / 2 + 105));
+        players.push(makePlayer("B", "WING", W - 285, H / 2 - 110));
+        players.push(makePlayer("B", "ATT", W - 400, H / 2));
+
+        players[0].active = false;
+        updateActivePlayer("A");
+        updateActivePlayer("B");
+      }
+
+      function resetBall(kickoffTeam = null) {
+        ball.x = W / 2;
+        ball.y = H / 2;
+        ball.vx = 0;
+        ball.vy = 0;
+        ball.owner = null;
+        ball.interceptable = true;
+        ball.controlFrames = 0;
+        kickoffState.active = false;
+        kickoffState.team = null;
+        kickoffState.player = null;
+        for (const p of players) {
+          p.x = p.homeX;
+          p.y = p.homeY;
+          p.vx = 0;
+          p.vy = 0;
+          p.kickCooldown = 0;
+          p.tackleCooldown = 0;
+          p.kickAnimation = 0;
+          p.isMoving = false;
+          p.keeperReaction = 0;
+          p.keeperTargetY = p.homeY;
+          p.keeperHoldFrames = 0;
+          p.facing = p.team === "A" ? 0 : Math.PI;
+          p.active = false;
+        }
+
+        for (const team of ["A", "B"]) {
+          input[team].joy = { x: 0, y: 0 };
+          for (const button of Object.values(input[team].buttons)) {
+            button.state = "up";
+            button.previous = "up";
+          }
+          charge[team] = 0;
+          passCharge[team].shortPass = 0;
+          passCharge[team].longPass = 0;
+        }
+
+        if (kickoffTeam) {
+          const direction = goalDir(kickoffTeam);
+          const kickoffPlayer =
+            teamPlayers(kickoffTeam).find((p) => p.role === "ATT") ||
+            teamPlayers(kickoffTeam).find((p) => p.role !== "GK");
+          kickoffPlayer.x = W / 2 - direction * 16;
+          kickoffPlayer.y = H / 2;
+          kickoffPlayer.facing = direction > 0 ? 0 : Math.PI;
+          kickoffPlayer.active = true;
+          ball.owner = kickoffPlayer;
+          ball.x = W / 2;
+          ball.y = H / 2;
+          ball.controlFrames = 0;
+          kickoffState.active = true;
+          kickoffState.team = kickoffTeam;
+          kickoffState.player = kickoffPlayer;
+          kickoffState.startX = kickoffPlayer.x;
+          kickoffState.startY = kickoffPlayer.y;
+        }
+      }
+
+      function teamPlayers(team) {
+        return players.filter((p) => p.team === team);
+      }
+
+      function updateActivePlayer(team) {
+        const allTeamPlayers = teamPlayers(team);
+        const ballCarrier =
+          ball.owner && ball.owner.team === team && ball.owner.role !== "GK"
+            ? ball.owner
+            : null;
+        if (ballCarrier) manualActivePlayer[team] = ballCarrier;
+        const manuallySelected = manualActivePlayer[team];
+        if (manualActivePlayer[team]?.role === "GK") {
+          manualActivePlayer[team] = null;
+        }
+        const candidates = ballCarrier
+          ? [ballCarrier]
+          : manuallySelected && allTeamPlayers.includes(manuallySelected)
+            ? [manuallySelected]
+            : allTeamPlayers.filter((p) => p.role !== "GK");
+        let closest = candidates[0],
+          bestD = Infinity;
+        for (const p of candidates) {
+          const d = Math.hypot(p.x - ball.x, p.y - ball.y);
+          if (d < bestD) {
+            bestD = d;
+            closest = p;
+          }
+        }
+        for (const p of allTeamPlayers) p.active = p === closest;
+      }
+
+      function cycleActivePlayer(team) {
+        if (ball.owner && ball.owner.team === team) return;
+        const teammates = teamPlayers(team).filter((p) => p.role !== "GK");
+        const currentIndex = teammates.findIndex((p) => p.active);
+        const next = teammates[(currentIndex + 1 + teammates.length) % teammates.length];
+        manualActivePlayer[team] = next;
+        for (const p of teammates) p.active = p === next;
+      }
+
+      function goalDir(team) {
+        return team === "A" ? 1 : -1;
+      } // direction team attacks
+
+      function turnTowards(current, target, maximumStep) {
+        let difference = target - current;
+        while (difference > Math.PI) difference -= Math.PI * 2;
+        while (difference < -Math.PI) difference += Math.PI * 2;
+        if (Math.abs(difference) <= maximumStep) return target;
+        return current + Math.sign(difference) * maximumStep;
+      }
+
+      function staminaMultiplier(p) {
+        return 0.75 + (p.stamina / 100) * 0.25;
+      }
+
+      function aiMove(p) {
+        // Non-active players coordinate their shape around the current phase.
+        const dBall = Math.hypot(p.x - ball.x, p.y - ball.y);
+        let tx = p.homeX,
+          ty = p.homeY;
+
+        if (p.role === "GK") {
+          // Keepers anticipate the ball's path and always move autonomously.
+          tx = p.homeX;
+          if (p.keeperReaction <= 0) {
+            const predictionFrames = Math.min(16, Math.max(5, Math.abs(ball.x - p.x) / 24));
+            const predictedY = ball.y + ball.vy * predictionFrames;
+            p.keeperTargetY = Math.max(
+              GOAL_Y1 + 6,
+              Math.min(GOAL_Y2 - 6, predictedY),
+            );
+            p.keeperReaction = 3;
+          } else {
+            p.keeperReaction--;
+          }
+          ty = p.keeperTargetY;
+        } else if (ball.owner && ball.owner.team === p.team) {
+          // Stable role-based support: defenders stay behind, midfielders form
+          // passing triangles, and the attacker stretches the back line.
+          const direction = goalDir(p.team);
+          const relativeX =
+            p.role === "ATT"
+              ? 155
+              : p.role === "MID" || p.role === "WING"
+                ? 85
+                : -125;
+          tx = ball.owner.x + direction * relativeX;
+          ty = p.homeY * 0.72 + ball.owner.y * 0.28;
+          tx = Math.max(35, Math.min(W - 35, tx));
+          ty = Math.max(45, Math.min(H - 45, ty));
+        } else if (ball.owner && ball.owner.team !== p.team) {
+          const carrier = ball.owner;
+          const teammates = teamPlayers(p.team).filter(
+            (mate) => mate.role !== "GK",
+          );
+          const pressers = [...teammates]
+            .sort(
+              (a, b) =>
+                Math.hypot(a.x - carrier.x, a.y - carrier.y) -
+                Math.hypot(b.x - carrier.x, b.y - carrier.y),
+            )
+            .slice(0, 1);
+          if (pressers.includes(p)) {
+            // One player pressures the ball while all three teammates mark runners.
+            tx = carrier.x - goalDir(carrier.team) * 12;
+            ty = carrier.y;
+          } else {
+            // Match remaining players and opponents by vertical lane so several
+            // defenders do not all chase the same target.
+            const zonalPlayers = teammates
+              .filter((mate) => !pressers.includes(mate))
+              .sort((a, b) => a.homeY - b.homeY);
+            const zonalOpponents = teamPlayers(carrier.team)
+              .filter(
+                (candidate) =>
+                  candidate.role !== "GK" && candidate !== carrier,
+              )
+              .sort((a, b) => a.y - b.y);
+            const laneIndex = zonalPlayers.indexOf(p);
+            const opponent = zonalOpponents[
+              Math.min(laneIndex, zonalOpponents.length - 1)
+            ];
+            if (opponent) {
+              tx = p.homeX * 0.35 + opponent.x * 0.65;
+              ty = p.homeY * 0.25 + opponent.y * 0.75;
+            }
+          }
+        } else if (!ball.owner) {
+          // Shift the entire formation toward a loose ball instead of standing still.
+          const urgency = dBall < 180 ? 0.52 : 0.3;
+          tx = p.homeX * (1 - urgency) + ball.x * urgency;
+          ty = p.homeY * (1 - urgency) + ball.y * urgency;
+        }
+
+        // Preserve passing lanes by gently steering away from nearby teammates.
+        for (const teammate of teamPlayers(p.team)) {
+          if (teammate === p) continue;
+          const awayX = p.x - teammate.x;
+          const awayY = p.y - teammate.y;
+          const spacing = Math.hypot(awayX, awayY) || 1;
+          if (spacing < 52) {
+            const strength = (52 - spacing) * 0.75;
+            tx += (awayX / spacing) * strength;
+            ty += (awayY / spacing) * strength;
+          }
+        }
+
+        const dx = tx - p.x,
+          dy = ty - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 4) {
+          const movementSpeed = p.speed * staminaMultiplier(p);
+          p.x += (dx / dist) * movementSpeed;
+          p.y += (dy / dist) * movementSpeed;
+          p.facing = turnTowards(p.facing, Math.atan2(dy, dx), 0.11);
+          p.stamina = Math.max(25, p.stamina - 0.002);
+          p.animationPhase += movementSpeed * 0.075;
+          p.isMoving = true;
+        }
+      }
+
+      function activeMove(p, joy) {
+        const mag = Math.hypot(joy.x, joy.y);
+        if (mag > 0.15) {
+          const movementSpeed = p.speed * 1.25 * staminaMultiplier(p);
+          p.x += (joy.x / Math.max(mag, 1)) * movementSpeed;
+          p.y += (joy.y / Math.max(mag, 1)) * movementSpeed;
+          const receiving = ball.owner === p && ball.controlFrames > 0;
+          p.facing = turnTowards(
+            p.facing,
+            Math.atan2(joy.y, joy.x),
+            receiving ? 0.07 : 0.16,
+          );
+          p.stamina = Math.max(25, p.stamina - 0.003 * Math.min(1, mag));
+          p.animationPhase += movementSpeed * 0.09 * Math.min(1, mag);
+          p.isMoving = true;
+        }
+      }
+
+      function clampPlayer(p) {
+        p.x = Math.max(15, Math.min(W - 15, p.x));
+        p.y = Math.max(15, Math.min(H - 15, p.y));
+      }
+
+      function resolvePlayerContact() {
+        for (let i = 0; i < players.length; i++) {
+          for (let j = i + 1; j < players.length; j++) {
+            const a = players[i];
+            const b = players[j];
+            let dx = b.x - a.x;
+            let dy = b.y - a.y;
+            let distance = Math.hypot(dx, dy);
+            // Teammates need extra room to preserve formation and passing lanes;
+            // opponents retain close-contact distance for marking and tackles.
+            const minimumDistance =
+              a.r + b.r + (a.team === b.team ? 12 : 0);
+            if (distance >= minimumDistance) continue;
+
+            // Pick a stable direction when two players reach the exact same spot.
+            if (distance < 0.01) {
+              dx = i % 2 === 0 ? 1 : -1;
+              dy = j % 2 === 0 ? 0.25 : -0.25;
+              distance = Math.hypot(dx, dy);
+            }
+            const nx = dx / distance;
+            const ny = dy / distance;
+            const overlap = minimumDistance - distance;
+            a.x -= nx * overlap * 0.5;
+            a.y -= ny * overlap * 0.5;
+            b.x += nx * overlap * 0.5;
+            b.y += ny * overlap * 0.5;
+            clampPlayer(a);
+            clampPlayer(b);
+          }
+        }
+      }
+
+      function facingPassTarget(p) {
+        const facingX = Math.cos(p.facing);
+        const facingY = Math.sin(p.facing);
+        let bestTeammate = null;
+        let bestScore = -Infinity;
+        for (const teammate of teamPlayers(p.team)) {
+          if (teammate === p) continue;
+          const dx = teammate.x - p.x;
+          const dy = teammate.y - p.y;
+          const distance = Math.hypot(dx, dy) || 1;
+          const alignment = (dx / distance) * facingX + (dy / distance) * facingY;
+          if (alignment < 0.3) continue;
+          const score = alignment * 500 - distance * 0.22;
+          if (score > bestScore) {
+            bestScore = score;
+            bestTeammate = teammate;
+          }
+        }
+        if (bestTeammate) return bestTeammate;
+        return {
+          x: p.x + facingX * W,
+          y: p.y + facingY * W,
+        };
+      }
+
+      let charge = { A: 0, B: 0 };
+      const passCharge = {
+        A: { shortPass: 0, longPass: 0 },
+        B: { shortPass: 0, longPass: 0 },
+      };
+      const aiController = {
+        shootFrames: 0,
+        decisionCooldown: 0,
+        tackleCooldown: 0,
+        dribbleSide: 1,
+        possessionFrames: 0,
+        carrier: null,
+      };
+
+      function kickTo(p, target, power, interceptable = true) {
+        if (!target) return false;
+        const dx = target.x - p.x;
+        const dy = target.y - p.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        ball.owner = null;
+        const kickPower = power * (0.85 + (p.stamina / 100) * 0.15);
+        ball.vx = (dx / distance) * kickPower;
+        ball.vy = (dy / distance) * kickPower;
+        ball.interceptable = interceptable;
+        ball.controlFrames = 0;
+        p.kickCooldown = 15;
+        p.kickAnimation = 10;
+        manualActivePlayer[p.team] =
+          target.team === p.team && target.role !== "GK" ? target : null;
+        playSound("kick");
+        return true;
+      }
+
+      function setAiButton(name, state) {
+        input.B.buttons[name].state = state;
+      }
+
+      function distanceToPassLane(point, start, end) {
+        const vx = end.x - start.x;
+        const vy = end.y - start.y;
+        const lengthSquared = vx * vx + vy * vy || 1;
+        const amount = Math.max(
+          0,
+          Math.min(
+            1,
+            ((point.x - start.x) * vx + (point.y - start.y) * vy) /
+              lengthSquared,
+          ),
+        );
+        return Math.hypot(
+          point.x - (start.x + vx * amount),
+          point.y - (start.y + vy * amount),
+        );
+      }
+
+      function giveKeeperPossession(keeper) {
+        ball.owner = keeper;
+        ball.controlFrames = 5;
+        keeper.keeperHoldFrames = 34;
+        manualActivePlayer[keeper.team] = null;
+      }
+
+      function safestKeeperReceiver(keeper) {
+        const opponents = teamPlayers(keeper.team === "A" ? "B" : "A");
+        const candidates = teamPlayers(keeper.team).filter(
+          (mate) => mate.role !== "GK",
+        );
+        let best = null;
+        let bestScore = -Infinity;
+        for (const mate of candidates) {
+          const distance = Math.hypot(mate.x - keeper.x, mate.y - keeper.y);
+          const receiverSpace = Math.min(
+            160,
+            ...opponents.map((opponent) =>
+              Math.hypot(opponent.x - mate.x, opponent.y - mate.y),
+            ),
+          );
+          const laneSpace = Math.min(
+            160,
+            ...opponents.map((opponent) =>
+              distanceToPassLane(opponent, keeper, mate),
+            ),
+          );
+          const blockedPenalty = laneSpace < 20 ? 900 : laneSpace < 34 ? 280 : 0;
+          const score =
+            receiverSpace * 1.4 +
+            laneSpace * 2.4 -
+            distance * 0.16 -
+            blockedPenalty;
+          if (score > bestScore) {
+            bestScore = score;
+            best = { mate, laneSpace };
+          }
+        }
+        return best;
+      }
+
+      function updateKeeperDistribution() {
+        const keeper = ball.owner?.role === "GK" ? ball.owner : null;
+        if (!keeper) return;
+        keeper.keeperHoldFrames -= 1;
+        if (keeper.keeperHoldFrames > 0) return;
+        const option = safestKeeperReceiver(keeper);
+        // If every lane is blocked, hold briefly while teammates spread out.
+        // A forced release only happens after roughly two additional seconds.
+        if (option && (option.laneSpace >= 22 || keeper.keeperHoldFrames < -110)) {
+          kickTo(keeper, option.mate, 6.3);
+        }
+      }
+
+      function chooseAiPass(p, opponents, underPressure) {
+        const direction = goalDir(p.team);
+        const inAttackingHalf =
+          p.team === "A" ? p.x > W / 2 : p.x < W / 2;
+        const candidates = teamPlayers(p.team).filter((mate) => mate !== p);
+        let best = null;
+        let bestScore = -Infinity;
+        for (const mate of candidates) {
+          const distance = Math.hypot(mate.x - p.x, mate.y - p.y);
+          if (distance < 45) continue;
+          const progress = (mate.x - p.x) * direction;
+          // Once attacking, never reset the ball behind the carrier.
+          if (inAttackingHalf && progress <= 10) continue;
+          const receiverSpace = Math.min(
+            120,
+            ...opponents.map((opponent) =>
+              Math.hypot(opponent.x - mate.x, opponent.y - mate.y),
+            ),
+          );
+          const laneSpace = Math.min(
+            120,
+            ...opponents.map((opponent) =>
+              distanceToPassLane(opponent, p, mate),
+            ),
+          );
+          const nearestDefender = [...opponents].sort(
+            (a, b) =>
+              Math.hypot(a.x - mate.x, a.y - mate.y) -
+              Math.hypot(b.x - mate.x, b.y - mate.y),
+          )[0];
+          const awayX = mate.x - nearestDefender.x;
+          const awayY = mate.y - nearestDefender.y;
+          const awayDistance = Math.hypot(awayX, awayY) || 1;
+          const lead = Math.min(32, distance * 0.12);
+          const target = {
+            x: Math.max(
+              18,
+              Math.min(
+                W - 18,
+                mate.x + direction * lead + (awayX / awayDistance) * 10,
+              ),
+            ),
+            y: Math.max(
+              18,
+              Math.min(H - 18, mate.y + (awayY / awayDistance) * 14),
+            ),
+          };
+          // Under pressure, receiver safety can justify a sideways/back pass.
+          // Otherwise, forward progress is the clear priority.
+          const lanePenalty = laneSpace < 20 ? 520 : laneSpace < 32 ? 160 : 0;
+          const score = (underPressure
+            ? receiverSpace * 1.3 + laneSpace * 1.8 + progress * 0.25 - distance * 0.06
+            : progress * 0.9 + receiverSpace * 0.8 + laneSpace * 1.7 - Math.abs(distance - 170) * 0.08) - lanePenalty;
+          if (score > bestScore) {
+            bestScore = score;
+            best = { mate, target, distance, progress, laneSpace };
+          }
+        }
+        return best;
+      }
+
+      function updateAiController(team) {
+        const inp = input[team];
+        const p = teamPlayers(team).find((pl) => pl.active);
+        if (!p) return;
+
+        for (const button of Object.values(inp.buttons)) button.state = "up";
+        if (aiController.decisionCooldown > 0) aiController.decisionCooldown--;
+        if (aiController.tackleCooldown > 0) aiController.tackleCooldown--;
+
+        let targetX = ball.x;
+        let targetY = ball.y;
+        if (ball.owner === p) {
+          if (aiController.carrier !== p) {
+            aiController.carrier = p;
+            aiController.possessionFrames = 0;
+            // A defensive × press must not become a short pass when possession
+            // changes on the same frame.
+            inp.buttons.shortPass.state = "up";
+            inp.buttons.shortPass.previous = "up";
+            passCharge[team].shortPass = 0;
+            passCharge[team].longPass = 0;
+          }
+          aiController.possessionFrames++;
+          targetX = team === "A" ? W : 0;
+          targetY = H / 2;
+
+          const opponents = teamPlayers(team === "A" ? "B" : "A");
+          if (aiController.possessionFrames === 1) {
+            const nearby = opponents.filter(
+              (opponent) => Math.hypot(opponent.x - p.x, opponent.y - p.y) < 170,
+            );
+            const above = nearby.filter((opponent) => opponent.y < p.y).length;
+            const below = nearby.length - above;
+            aiController.dribbleSide = above <= below ? -1 : 1;
+          }
+          const nearestOpponent = opponents
+            .map((opponent) => ({
+              opponent,
+              distance: Math.hypot(opponent.x - p.x, opponent.y - p.y),
+            }))
+            .sort((a, b) => a.distance - b.distance)[0];
+          const distanceToGoal = team === "A" ? W - p.x : p.x;
+          const underPressure = nearestOpponent?.distance < 72;
+          const forwardLaneBlocked = opponents.some((opponent) => {
+            const ahead = (opponent.x - p.x) * goalDir(team);
+            return ahead > 0 && ahead < 105 && Math.abs(opponent.y - p.y) < 38;
+          });
+          const shouldPass =
+            p.role === "GK" ||
+            (underPressure && aiController.possessionFrames > 12) ||
+            aiController.possessionFrames > 85 ||
+            (forwardLaneBlocked && aiController.possessionFrames > 40);
+
+          if (
+            shouldPass &&
+            distanceToGoal > AI_SHOOT_RANGE &&
+            aiController.decisionCooldown === 0
+          ) {
+            const choice = chooseAiPass(p, opponents, underPressure);
+            const safeEnough =
+              choice &&
+              (choice.laneSpace >= 20 ||
+                p.role === "GK" ||
+                aiController.possessionFrames > 120);
+            if (safeEnough) {
+              p.facing = turnTowards(
+                p.facing,
+                Math.atan2(choice.target.y - p.y, choice.target.x - p.x),
+                0.18,
+              );
+              const power = Math.max(
+                5.3,
+                Math.min(10.5, 4.5 + choice.distance * 0.022),
+              );
+              kickTo(p, choice.target, power);
+              aiController.decisionCooldown = 42;
+              aiController.possessionFrames = 0;
+              aiController.dribbleSide *= -1;
+              inp.joy = { x: 0, y: 0 };
+              return;
+            }
+          }
+
+          // Keep advancing while waiting for the next decision, bending the
+          // dribble around defenders instead of entering a persistent retreat.
+          for (const opponent of opponents) {
+            const ox = p.x - opponent.x;
+            const oy = p.y - opponent.y;
+            const d = Math.hypot(ox, oy) || 1;
+            if (d < 95) {
+              const strength = (95 - d) / 95;
+              targetX += (ox / d) * strength * 110;
+              targetY +=
+                (oy / d) * strength * 85 +
+                aiController.dribbleSide * strength * 38;
+            }
+          }
+        } else if (ball.owner && ball.owner.team === team) {
+          // Run into space ahead of a teammate who has possession.
+          targetX = ball.owner.x + goalDir(team) * 110;
+          targetY = ball.owner.y + (p.homeY - H / 2) * 0.35;
+        } else {
+          aiController.carrier = null;
+          aiController.possessionFrames = 0;
+        }
+
+        const dx = targetX - p.x;
+        const dy = targetY - p.y;
+        const distance = Math.hypot(dx, dy);
+        inp.joy =
+          distance > 5
+            ? { x: dx / distance, y: dy / distance }
+            : { x: 0, y: 0 };
+
+        if (ball.owner === p) {
+          const distanceToGoal = team === "A" ? W - p.x : p.x;
+          if (distanceToGoal <= AI_SHOOT_RANGE) {
+            if (aiController.shootFrames < 16) {
+              setAiButton("shoot", "down");
+              aiController.shootFrames++;
+            } else {
+              setAiButton("shoot", "up");
+              aiController.shootFrames = 0;
+              aiController.tackleCooldown = 24;
+            }
+          } else {
+            aiController.shootFrames = 0;
+          }
+        } else {
+          aiController.shootFrames = 0;
+          const canTackle =
+            ball.owner &&
+            ball.owner.team !== team &&
+            Math.hypot(p.x - ball.x, p.y - ball.y) < 24 &&
+            aiController.tackleCooldown === 0;
+          if (canTackle) {
+            setAiButton("shortPass", "down");
+            aiController.tackleCooldown = 30;
+          }
+        }
+      }
+
+      function handleActions(team) {
+        const inp = input[team];
+        const p = teamPlayers(team).find((pl) => pl.active);
+        if (!p) return;
+        const hasBall = ball.owner === p;
+
+        const pressed = (name) =>
+          inp.buttons[name].state === "down" &&
+          inp.buttons[name].previous === "up";
+        const released = (name) =>
+          inp.buttons[name].state === "up" &&
+          inp.buttons[name].previous === "down";
+
+        if (pressed("cross")) {
+          cycleActivePlayer(team);
+          for (const button of Object.values(inp.buttons)) {
+            button.previous = button.state;
+          }
+          return;
+        }
+
+        if (hasBall) {
+          if (inp.buttons.shortPass.state === "down") {
+            passCharge[team].shortPass = Math.min(
+              40,
+              passCharge[team].shortPass + 1,
+            );
+          } else if (
+            released("shortPass") &&
+            passCharge[team].shortPass > 0
+          ) {
+            const power = 4.8 + passCharge[team].shortPass * 0.14;
+            kickTo(p, facingPassTarget(p), power);
+            passCharge[team].shortPass = 0;
+          } else if (inp.buttons.longPass.state === "down") {
+            passCharge[team].longPass = Math.min(
+              40,
+              passCharge[team].longPass + 1,
+            );
+          } else if (
+            released("longPass") &&
+            passCharge[team].longPass > 0
+          ) {
+            const power = 6.8 + passCharge[team].longPass * 0.16;
+            kickTo(p, facingPassTarget(p), power);
+            passCharge[team].longPass = 0;
+          } else if (inp.buttons.shoot.state === "down") {
+            charge[team] = Math.min(30, charge[team] + 1);
+          } else if (released("shoot")) {
+            const target = {
+              x: team === "A" ? W + GOAL_DEPTH : -GOAL_DEPTH,
+              y: H / 2 + (Math.random() - 0.5) * 45,
+            };
+            kickTo(
+              p,
+              target,
+              6 + Math.max(5, charge[team]) * 0.3,
+              false,
+            );
+            charge[team] = 0;
+          }
+        } else {
+          charge[team] = 0;
+          passCharge[team].shortPass = 0;
+          passCharge[team].longPass = 0;
+          if (
+            inp.buttons.shortPass.state === "down" &&
+            p.tackleCooldown === 0
+          ) {
+            // tackle attempt
+            const dBall = Math.hypot(p.x - ball.x, p.y - ball.y);
+            if (dBall < 25 && ball.owner && ball.owner.team !== team) {
+              p.tackleCooldown = 18;
+              if (Math.random() < 0.6) {
+                ball.owner.kickCooldown = 20;
+                ball.owner = null;
+                ball.controlFrames = 0;
+                ball.vx = Math.cos(p.facing) * 2.4;
+                ball.vy = Math.sin(p.facing) * 2.4;
+              }
+            }
+          }
+        }
+
+        for (const button of Object.values(inp.buttons)) {
+          button.previous = button.state;
+        }
+      }
+
+      function wallRestitution(speed) {
+        // Hard strikes rebound more sharply; soft touches lose more energy.
+        return Math.max(0.42, Math.min(0.82, 0.42 + speed * 0.03));
+      }
+
+      function updateBall() {
+        if (ball.owner) {
+          const p = ball.owner;
+          const fx =
+            p.facing !== undefined ? Math.cos(p.facing) : goalDir(p.team);
+          const fy = p.facing !== undefined ? Math.sin(p.facing) : 0;
+          const perpendicularX = -fy;
+          const perpendicularY = fx;
+          const footSide = Math.sin(p.animationPhase * (Math.PI / 2));
+          const controlX = p.x + fx * 13 + perpendicularX * footSide * 4;
+          const controlY = p.y + fy * 13 + perpendicularY * footSide * 4;
+          if (ball.controlFrames > 0) {
+            // Ease the received ball into dribbling position instead of
+            // teleporting it across the player's body.
+            ball.x += (controlX - ball.x) * 0.36;
+            ball.y += (controlY - ball.y) * 0.36;
+            ball.controlFrames--;
+          } else {
+            ball.x = controlX;
+            ball.y = controlY;
+          }
+          ball.vx = 0;
+          ball.vy = 0;
+        } else {
+          ball.x += ball.vx;
+          ball.y += ball.vy;
+          ball.vx *= 0.97;
+          ball.vy *= 0.97;
+          if (Math.abs(ball.vx) < 0.05) ball.vx = 0;
+          if (Math.abs(ball.vy) < 0.05) ball.vy = 0;
+
+          const speed = Math.hypot(ball.vx, ball.vy);
+          const rebound = wallRestitution(speed);
+          const wallInset = 10 + ball.r;
+
+          // Reverse only the perpendicular component, preserving the natural
+          // incoming angle while scaling the rebound by impact force.
+          if (ball.y < wallInset && ball.vy < 0) {
+            ball.y = wallInset;
+            ball.vy = Math.abs(ball.vy) * rebound;
+          } else if (ball.y > H - wallInset && ball.vy > 0) {
+            ball.y = H - wallInset;
+            ball.vy = -Math.abs(ball.vy) * rebound;
+          }
+
+          const insideGoalMouth = ball.y > GOAL_Y1 && ball.y < GOAL_Y2;
+          if (!insideGoalMouth) {
+            if (ball.x < wallInset && ball.vx < 0) {
+              ball.x = wallInset;
+              ball.vx = Math.abs(ball.vx) * rebound;
+            } else if (ball.x > W - wallInset && ball.vx > 0) {
+              ball.x = W - wallInset;
+              ball.vx = -Math.abs(ball.vx) * rebound;
+            }
+          }
+
+          // pickup check
+          const ballSpeed = Math.hypot(ball.vx, ball.vy);
+          const contacts = players
+            .filter((p) => p.kickCooldown === 0)
+            .map((p) => ({
+              player: p,
+              distance: Math.hypot(p.x - ball.x, p.y - ball.y),
+            }))
+            .filter(
+              ({ player, distance }) =>
+                distance <
+                player.r + ball.r + (player.role === "GK" ? 9 : 0),
+            )
+            .sort((a, b) => a.distance - b.distance);
+
+          let shotHandled = false;
+          if (!ball.interceptable) {
+            const keeperContact = contacts.find(
+              ({ player }) => player.role === "GK",
+            );
+            if (keeperContact) {
+              const keeper = keeperContact.player;
+              giveKeeperPossession(keeper);
+              playSound("save");
+              shotHandled = true;
+            }
+          }
+
+          if (!shotHandled && (ball.interceptable || ballSpeed < 11.5)) {
+            const receiver = contacts[0];
+            // Normal passes can be received or intercepted on body contact.
+            // Only powerful shots are allowed to travel through a crowded area.
+            if (receiver) {
+              if (receiver.player.role === "GK") {
+                giveKeeperPossession(receiver.player);
+              } else {
+                ball.owner = receiver.player;
+                ball.controlFrames = 7;
+              }
+            }
+          }
+        }
+
+        for (const p of players) {
+          if (p.kickCooldown > 0) p.kickCooldown--;
+          if (p.tackleCooldown > 0) p.tackleCooldown--;
+          if (p.kickAnimation > 0) p.kickAnimation--;
+        }
+
+        // goal check
+        if (ball.x <= 0 && ball.y > GOAL_Y1 && ball.y < GOAL_Y2) {
+          scoreB++;
+          afterGoal("B");
+        } else if (
+          ball.x >= W &&
+          ball.y > GOAL_Y1 &&
+          ball.y < GOAL_Y2
+        ) {
+          scoreA++;
+          afterGoal("A");
+        } else {
+          ball.x = Math.max(0, Math.min(W, ball.x));
+        }
+      }
+
+      function afterGoal(scoringTeam) {
+        running = false;
+        goalCelebration = true;
+        playSound("goal");
+        document.getElementById("scoreA").textContent = `Team A: ${scoreA}`;
+        document.getElementById("scoreB").textContent =
+          `${aiMode ? "AI" : "Team B"}: ${scoreB}`;
+        const scorerName =
+          scoringTeam === "A" ? "TEAM A" : aiMode ? "AI" : "TEAM B";
+        document.getElementById("goalMessage").textContent =
+          `GOAL — ${scorerName}!`;
+        document.getElementById("goalOverlay").style.display = "flex";
+
+        const kickoffTeam = scoringTeam === "A" ? "B" : "A";
+        setTimeout(() => {
+          if (!gameStarted) return;
+          resetBall(kickoffTeam);
+          goalCelebration = false;
+          document.getElementById("goalOverlay").style.display = "none";
+          lastTick = Date.now();
+          running = true;
+          loop();
+        }, 1800);
+      }
+
+      function update() {
+        const now = Date.now();
+        const dt = (now - lastTick) / 1000;
+        lastTick = now;
+        if (!kickoffState.active) matchSeconds -= dt;
+        if (matchSeconds <= 0) {
+          matchSeconds = 0;
+          endGame();
+          return;
+        }
+
+        for (const team of ["A", "B"]) {
+          updateActivePlayer(team);
+          if (kickoffState.active && team !== kickoffState.team) continue;
+          if (aiMode && team === "B") updateAiController(team);
+          handleActions(team);
+        }
+
+        for (const p of players) {
+          p.isMoving = false;
+          if (kickoffState.active && p.team !== kickoffState.team) {
+            // The defending side holds its starting shape until first touch.
+            p.facing = p.team === "A" ? 0 : Math.PI;
+            continue;
+          }
+          if (p.active) {
+            let movement = input[p.team].joy;
+            const marking = input[p.team].buttons.shortPass.state === "down";
+            const looseBall = !ball.owner;
+            const markingOpponent =
+              marking && ball.owner && ball.owner.team !== p.team;
+            if (looseBall || markingOpponent) {
+              // Lead a moving loose ball so the defender runs into its path.
+              const leadFrames = looseBall ? 6 : 0;
+              const targetX = ball.x + ball.vx * leadFrames;
+              const targetY = ball.y + ball.vy * leadFrames;
+              const dx = targetX - p.x;
+              const dy = targetY - p.y;
+              const distance = Math.hypot(dx, dy) || 1;
+              const pursuit = { x: dx / distance, y: dy / distance };
+              if (looseBall) {
+                // Ball assistance remains dominant, but analog input is never ignored.
+                const blendedX = pursuit.x * 0.65 + movement.x * 0.35;
+                const blendedY = pursuit.y * 0.65 + movement.y * 0.35;
+                const blendedLength = Math.hypot(blendedX, blendedY) || 1;
+                movement = {
+                  x: blendedX / blendedLength,
+                  y: blendedY / blendedLength,
+                };
+              } else {
+                movement = pursuit;
+              }
+            }
+            activeMove(p, movement);
+          } else aiMove(p);
+          clampPlayer(p);
+        }
+
+        if (kickoffState.active) {
+          const kickoffMoved =
+            kickoffState.player &&
+            Math.hypot(
+              kickoffState.player.x - kickoffState.startX,
+              kickoffState.player.y - kickoffState.startY,
+            ) > 2;
+          const kickoffPassed = ball.owner !== kickoffState.player;
+          if (kickoffMoved || kickoffPassed) kickoffState.active = false;
+        }
+
+        resolvePlayerContact();
+
+        if (!ball.owner && Math.hypot(ball.vx, ball.vy) < 0.12) {
+          const moved = Math.hypot(
+            ball.x - looseBallTracker.x,
+            ball.y - looseBallTracker.y,
+          );
+          looseBallTracker.frames = moved < 0.12
+            ? looseBallTracker.frames + 1
+            : 0;
+          looseBallTracker.x = ball.x;
+          looseBallTracker.y = ball.y;
+
+          if (looseBallTracker.frames > 75) {
+            const closest = [...players].sort(
+              (a, b) =>
+                Math.hypot(a.x - ball.x, a.y - ball.y) -
+                Math.hypot(b.x - ball.x, b.y - ball.y),
+            )[0];
+            const dx = closest.x - ball.x;
+            const dy = closest.y - ball.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            if (distance < closest.r + ball.r + 8) {
+              if (closest.role === "GK") {
+                giveKeeperPossession(closest);
+              } else {
+                ball.owner = closest;
+                ball.controlFrames = 7;
+              }
+            } else {
+              ball.vx = (dx / distance) * 1.2;
+              ball.vy = (dy / distance) * 1.2;
+            }
+            looseBallTracker.frames = 0;
+          }
+        } else {
+          looseBallTracker.frames = 0;
+          looseBallTracker.x = ball.x;
+          looseBallTracker.y = ball.y;
+        }
+
+        updateKeeperDistribution();
+        updateBall();
+
+        const mm = String(Math.floor(matchSeconds / 60)).padStart(2, "0");
+        const ss = String(Math.floor(matchSeconds % 60)).padStart(2, "0");
+        document.getElementById("clock").textContent = `${mm}:${ss}`;
+      }
+
+      function drawPitch() {
+        ctx.fillStyle = "#1a5c2a";
+        ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = "rgba(255,255,255,0.6)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(10, 10, W - 20, H - 20);
+        ctx.beginPath();
+        ctx.moveTo(W / 2, 10);
+        ctx.lineTo(W / 2, H - 10);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(W / 2, H / 2, 60, 0, Math.PI * 2);
+        ctx.stroke();
+        drawGoal("left");
+        drawGoal("right");
+        // penalty boxes
+        ctx.strokeRect(10, H / 2 - 100, 90, 200);
+        ctx.strokeRect(W - 100, H / 2 - 100, 90, 200);
+      }
+
+      function drawGoal(side) {
+        const isLeft = side === "left";
+        const frontX = isLeft ? GOAL_DEPTH : W - GOAL_DEPTH;
+        const backX = isLeft ? 2 : W - 2;
+        const netLeft = Math.min(frontX, backX);
+        const netWidth = Math.abs(frontX - backX);
+
+        ctx.save();
+
+        // Net shadow and mesh.
+        ctx.fillStyle = "rgba(225, 240, 255, 0.13)";
+        ctx.fillRect(netLeft, GOAL_Y1, netWidth, GOAL_Y2 - GOAL_Y1);
+        ctx.strokeStyle = "rgba(225, 240, 255, 0.34)";
+        ctx.lineWidth = 0.8;
+        for (let y = GOAL_Y1 + 8; y < GOAL_Y2; y += 8) {
+          ctx.beginPath();
+          ctx.moveTo(netLeft, y);
+          ctx.lineTo(netLeft + netWidth, y);
+          ctx.stroke();
+        }
+        for (let x = netLeft + 3; x < netLeft + netWidth; x += 4) {
+          ctx.beginPath();
+          ctx.moveTo(x, GOAL_Y1);
+          ctx.lineTo(x, GOAL_Y2);
+          ctx.stroke();
+        }
+
+        // U-shaped white frame viewed from above.
+        ctx.strokeStyle = "#f8fbff";
+        ctx.lineWidth = 4;
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(frontX, GOAL_Y1);
+        ctx.lineTo(backX, GOAL_Y1);
+        ctx.lineTo(backX, GOAL_Y2);
+        ctx.lineTo(frontX, GOAL_Y2);
+        ctx.stroke();
+
+        // Front posts sit on the goal line and remain clearly visible.
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#cbd5df";
+        ctx.lineWidth = 1;
+        for (const y of [GOAL_Y1, GOAL_Y2]) {
+          ctx.beginPath();
+          ctx.arc(frontX, y, 4.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
+      function drawPlayerCharacter(p) {
+        // Grounding shadow remains code-drawn so every rotated sprite reads well.
+        ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y + 5, 11, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (!playerSpritesReady) {
+          ctx.fillStyle = p.team === "A" ? "#3fa6ff" : "#ff4d4d";
+          if (p.role === "GK")
+            ctx.fillStyle = p.team === "A" ? "#66eecc" : "#ffcc66";
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fill();
+          return;
+        }
+
+        const cellWidth = playerSprites.naturalWidth / 4;
+        const cellHeight = playerSprites.naturalHeight / 4;
+        const animationPosition = p.isMoving ? p.animationPhase % 4 : 1;
+        const firstFrame = Math.floor(animationPosition) % 4;
+        const secondFrame = (firstFrame + 1) % 4;
+        const frameBlend = animationPosition - Math.floor(animationPosition);
+        const row = p.role === "GK" ? (p.team === "A" ? 2 : 3) : p.team === "A" ? 0 : 1;
+        const sourceY = row * cellHeight + cellHeight * 0.015;
+        const sourceWidth = cellWidth * 0.68;
+        const sourceHeight = cellHeight * 0.96;
+        const runWave = p.isMoving ? Math.sin(p.animationPhase) : 0;
+        const kickProgress = p.kickAnimation > 0
+          ? Math.sin(((10 - p.kickAnimation) / 10) * Math.PI)
+          : 0;
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        // Source characters run toward the bottom of each cell.
+        ctx.rotate(p.facing - Math.PI / 2 + runWave * 0.02);
+        ctx.translate(0, kickProgress * 3);
+        const drawFrame = (frame, opacity) => {
+          ctx.globalAlpha = opacity;
+          ctx.drawImage(
+            playerSprites,
+            frame * cellWidth + cellWidth * 0.16,
+            sourceY,
+            sourceWidth,
+            sourceHeight,
+            -17,
+            -24,
+            34,
+            48,
+          );
+        };
+        drawFrame(firstFrame, 1 - frameBlend);
+        if (frameBlend > 0) drawFrame(secondFrame, frameBlend);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      function draw() {
+        drawPitch();
+
+        for (const p of players) {
+          drawPlayerCharacter(p);
+
+          if (p.active) {
+            const directionX = Math.cos(p.facing);
+            const directionY = Math.sin(p.facing);
+            const perpendicularX = -directionY;
+            const perpendicularY = directionX;
+            const tipDistance = p.r + 15;
+            const baseDistance = p.r + 6;
+            const tipX = p.x + directionX * tipDistance;
+            const tipY = p.y + directionY * tipDistance;
+            const baseX = p.x + directionX * baseDistance;
+            const baseY = p.y + directionY * baseDistance;
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(
+              baseX + perpendicularX * 6,
+              baseY + perpendicularY * 6,
+            );
+            ctx.lineTo(
+              baseX - perpendicularX * 6,
+              baseY - perpendicularY * 6,
+            );
+            ctx.closePath();
+            ctx.fillStyle = p.team === "A" ? "#66ccff" : "#ff6666";
+            ctx.fill();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Small active-player stamina meter: green fades toward red.
+            const staminaRatio = p.stamina / 100;
+            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+            ctx.fillRect(p.x - 12, p.y + 17, 24, 3);
+            ctx.fillStyle = `hsl(${staminaRatio * 120} 80% 50%)`;
+            ctx.fillRect(p.x - 12, p.y + 17, 24 * staminaRatio, 3);
+          }
+        }
+
+        // charge meter above active kicker
+        for (const team of ["A", "B"]) {
+          const passingCharge = Math.max(
+            passCharge[team].shortPass,
+            passCharge[team].longPass,
+          );
+          const activeCharge = Math.max(charge[team], passingCharge);
+          if (activeCharge > 0) {
+            const p = teamPlayers(team).find((pl) => pl.active);
+            if (p) {
+              ctx.fillStyle = "#333";
+              ctx.fillRect(p.x - 15, p.y - 30, 30, 5);
+              ctx.fillStyle = passingCharge > 0 ? "#66ccff" : "#ffcc00";
+              const maximum = passingCharge > 0 ? 40 : 30;
+              ctx.fillRect(
+                p.x - 15,
+                p.y - 30,
+                30 * (activeCharge / maximum),
+                5,
+              );
+            }
+          }
+        }
+
+        // ball
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      function endGame() {
+        if (scoreA === scoreB) {
+          startPenaltyShootout();
+          return;
+        }
+        running = false;
+        gameStarted = false;
+        paused = false;
+        document.getElementById("pauseOverlay").style.display = "none";
+        let result =
+          scoreA > scoreB
+              ? "Team A wins!"
+              : aiMode
+                ? "AI wins!"
+                : "Team B wins!";
+        document.getElementById("finalResult").textContent =
+          `${result} (${scoreA} - ${scoreB})`;
+        document.getElementById("gameOverOverlay").style.display = "flex";
+      }
+
+      function startPenaltyShootout() {
+        Object.assign(penaltyState, {
+          active: true,
+          turn: "A",
+          kicks: { A: 0, B: 0 },
+          goals: { A: 0, B: 0 },
+          suddenDeath: false,
+          phase: "ready",
+          timer: 0,
+          charge: 0,
+          previousAction: input.A.buttons.shoot.state,
+          aimX: W / 2,
+          aimY: 105,
+          keeperX: W / 2,
+          keeperTargetX: W / 2,
+          shot: null,
+          result: "",
+          aiTimer: 150,
+        });
+        document.getElementById("clock").textContent = "PENALTIES";
+        updatePenaltyHud();
+        playSound("whistle");
+      }
+
+      function updatePenaltyHud() {
+        document.getElementById("scoreA").textContent =
+          `Team A: ${penaltyState.goals.A}/${penaltyState.kicks.A}`;
+        document.getElementById("scoreB").textContent =
+          `${aiMode ? "AI" : "Team B"}: ${penaltyState.goals.B}/${penaltyState.kicks.B}`;
+      }
+
+      function penaltyTeamName(team) {
+        return team === "A" ? "TEAM A" : aiMode ? "AI" : "TEAM B";
+      }
+
+      function takePenaltyShot(targetX, targetY, power) {
+        playSound("kick");
+        const defendingTeam = penaltyState.turn === "A" ? "B" : "A";
+        const aiKeeper = aiMode && defendingTeam === "B";
+        if (aiKeeper) {
+          const readsShot = Math.random() < 0.48;
+          penaltyState.keeperTargetX = readsShot
+            ? targetX + (Math.random() - 0.5) * 42
+            : W / 2 + (Math.random() - 0.5) * 260;
+        } else {
+          const keeperInput = input[defendingTeam];
+          const isDiving = keeperInput.buttons.shoot.state === "down";
+          penaltyState.keeperTargetX = isDiving
+            ? W / 2 + keeperInput.joy.x * 165
+            : W / 2;
+        }
+        penaltyState.keeperTargetX = Math.max(
+          W / 2 - 165,
+          Math.min(W / 2 + 165, penaltyState.keeperTargetX),
+        );
+        const saveDistance = 54 - power * 15;
+        const saved =
+          Math.abs(penaltyState.keeperTargetX - targetX) < saveDistance;
+        penaltyState.shot = {
+          startX: W / 2,
+          startY: 395,
+          targetX,
+          targetY,
+          progress: 0,
+          goal: !saved,
+        };
+        penaltyState.phase = "flying";
+        penaltyState.result = "";
+      }
+
+      function updatePenalty() {
+        const state = penaltyState;
+        const shooter = state.turn;
+        const defender = shooter === "A" ? "B" : "A";
+
+        if (state.phase === "ready") {
+          if (aiMode && shooter === "B") {
+            state.aiTimer -= 1;
+            if (state.aiTimer === 149) {
+              state.aimX = W / 2 + (Math.random() < 0.5 ? -1 : 1) * 125;
+              state.aimY = 85 + Math.random() * 30;
+            }
+            state.charge = Math.min(30, state.charge + 1);
+            if (state.aiTimer <= 0) {
+              takePenaltyShot(
+                state.aimX + (Math.random() - 0.5) * 45,
+                state.aimY + Math.random() * 30,
+                0.75 + Math.random() * 0.2,
+              );
+            }
+          } else {
+            const joy = input[shooter].joy;
+            state.aimX = W / 2 + joy.x * 155;
+            state.aimY = 105 + joy.y * 38;
+            const actionState = input[shooter].buttons.shoot.state;
+            if (
+              state.previousAction === "up" &&
+              actionState === "down"
+            ) {
+              takePenaltyShot(
+                state.aimX,
+                state.aimY,
+                0.78,
+              );
+            }
+            state.previousAction = actionState;
+          }
+        } else if (state.phase === "flying") {
+          state.shot.progress = Math.min(1, state.shot.progress + 0.052);
+          state.keeperX += (state.keeperTargetX - state.keeperX) * 0.18;
+          if (state.shot.progress >= 1) {
+            state.phase = "result";
+            state.result = state.shot.goal ? "GOAL!" : "SAVED!";
+            playSound(state.shot.goal ? "goal" : "save");
+            state.timer = 70;
+          }
+        } else if (state.phase === "result") {
+          state.timer -= 1;
+          if (state.timer <= 0) completePenaltyKick();
+        }
+      }
+
+      function completePenaltyKick() {
+        const state = penaltyState;
+        const team = state.turn;
+        state.kicks[team] += 1;
+        if (state.shot.goal) state.goals[team] += 1;
+        updatePenaltyHud();
+
+        let winner = null;
+        if (!state.suddenDeath) {
+          const remainingA = Math.max(0, 3 - state.kicks.A);
+          const remainingB = Math.max(0, 3 - state.kicks.B);
+          if (state.goals.A > state.goals.B + remainingB) winner = "A";
+          if (state.goals.B > state.goals.A + remainingA) winner = "B";
+          if (state.kicks.A >= 3 && state.kicks.B >= 3) {
+            if (state.goals.A !== state.goals.B) {
+              winner = state.goals.A > state.goals.B ? "A" : "B";
+            } else {
+              state.suddenDeath = true;
+            }
+          }
+        } else if (
+          state.kicks.A === state.kicks.B &&
+          state.goals.A !== state.goals.B
+        ) {
+          winner = state.goals.A > state.goals.B ? "A" : "B";
+        }
+
+        if (winner) {
+          finishPenaltyShootout(winner);
+          return;
+        }
+        state.turn = team === "A" ? "B" : "A";
+        state.phase = "ready";
+        state.charge = 0;
+        state.previousAction = input[state.turn].buttons.shoot.state;
+        state.aimX = W / 2;
+        state.aimY = 105;
+        state.keeperX = W / 2;
+        state.keeperTargetX = W / 2;
+        state.shot = null;
+        state.result = "";
+        state.aiTimer = 150;
+      }
+
+      function finishPenaltyShootout(winner) {
+        penaltyState.active = false;
+        running = false;
+        gameStarted = false;
+        paused = false;
+        const winnerName = penaltyTeamName(winner);
+        document.getElementById("finalResult").textContent =
+          `${winnerName} wins on penalties! (${penaltyState.goals.A} - ${penaltyState.goals.B})`;
+        document.getElementById("gameOverOverlay").style.display = "flex";
+      }
+
+      function drawPenaltyShootout() {
+        ctx.fillStyle = "#18834b";
+        ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = "rgba(255,255,255,.7)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(W / 2, 395, 4, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const gx = W / 2 - 190;
+        const gy = 50;
+        const gw = 380;
+        const gh = 145;
+        ctx.fillStyle = "rgba(220,235,240,.22)";
+        ctx.fillRect(gx, gy, gw, gh);
+        ctx.strokeStyle = "rgba(255,255,255,.35)";
+        ctx.lineWidth = 1;
+        for (let x = gx; x <= gx + gw; x += 24) {
+          ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x, gy + gh); ctx.stroke();
+        }
+        for (let y = gy; y <= gy + gh; y += 20) {
+          ctx.beginPath(); ctx.moveTo(gx, y); ctx.lineTo(gx + gw, y); ctx.stroke();
+        }
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 8;
+        ctx.strokeRect(gx, gy, gw, gh);
+
+        const keeper = makePlayer(
+          penaltyState.turn === "A" ? "B" : "A",
+          "GK",
+          penaltyState.keeperX,
+          170,
+        );
+        keeper.facing = Math.PI / 2;
+        keeper.x = penaltyState.keeperX;
+        drawPlayerCharacter(keeper);
+        const kicker = makePlayer(penaltyState.turn, "ATT", W / 2, 440);
+        kicker.facing = -Math.PI / 2;
+        kicker.kickAnimation = penaltyState.phase === "flying" ? 5 : 0;
+        drawPlayerCharacter(kicker);
+
+        let ballX = W / 2;
+        let ballY = 395;
+        if (penaltyState.shot) {
+          const eased = 1 - Math.pow(1 - penaltyState.shot.progress, 2);
+          ballX += (penaltyState.shot.targetX - ballX) * eased;
+          ballY += (penaltyState.shot.targetY - ballY) * eased;
+        }
+        ctx.fillStyle = "#fff";
+        ctx.beginPath(); ctx.arc(ballX, ballY, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.stroke();
+
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 25px Arial";
+        ctx.fillText(
+          penaltyState.suddenDeath ? "SUDDEN DEATH" : "BEST OF 3 PENALTIES",
+          W / 2,
+          30,
+        );
+        ctx.font = "bold 22px Arial";
+        ctx.fillText(
+          `${penaltyTeamName(penaltyState.turn)} TO SHOOT`,
+          W / 2,
+          515,
+        );
+        ctx.font = "bold 15px Arial";
+        ctx.fillStyle = "rgba(255,255,255,.88)";
+        ctx.fillText(
+          aiMode && penaltyState.turn === "B"
+            ? `Keeper: hold □ + direction to dive  •  AI shoots in ${Math.max(1, Math.ceil(penaltyState.aiTimer / 60))}`
+            : aiMode
+              ? "Choose direction + press □"
+              : "Kicker: direction + □   •   Keeper: hold □ + direction",
+          W / 2,
+          542,
+        );
+        if (penaltyState.result) {
+          ctx.fillStyle = penaltyState.shot.goal ? "#ffe45c" : "#fff";
+          ctx.font = "bold 54px Arial";
+          ctx.fillText(penaltyState.result, W / 2, 290);
+        }
+        ctx.textAlign = "start";
+      }
+
+      function loop() {
+        if (!running) return;
+        if (penaltyState.active) {
+          updatePenalty();
+          drawPenaltyShootout();
+          requestAnimationFrame(loop);
+          return;
+        }
+        update();
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      function togglePause() {
+        paused = !paused;
+        document.getElementById("pauseOverlay").style.display = paused
+          ? "flex"
+          : "none";
+        if (paused) {
+          running = false;
+        } else {
+          lastTick = Date.now();
+          running = true;
+          loop();
+        }
+      }
+
+      function startGame(playAgainstAi) {
+        ensureAudio();
+        aiMode = playAgainstAi;
+        gameStarted = true;
+        paused = false;
+        document.getElementById("lobby").style.display = "none";
+        document.getElementById("hud").style.display = "flex";
+        if (aiMode) document.getElementById("scoreB").textContent = "AI: 0";
+        canvas.style.display = "block";
+        setupTeams();
+        resetBall("A");
+        lastTick = Date.now();
+        running = true;
+        playSound("whistle");
+        loop();
+      }
+
+      document
+        .getElementById("startBtn")
+        .addEventListener("click", () => startGame(false));
+      document
+        .getElementById("aiBtn")
+        .addEventListener("click", () => startGame(true));
+    </script>
+  </body>
+</html>
