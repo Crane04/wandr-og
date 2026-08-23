@@ -184,7 +184,8 @@
     <div id="goalOverlay"><h2 id="goalMessage">GOAL!</h2></div>
 
     <script>
-      const ws = new WebSocket(`ws://${location.host}`);
+      const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${wsProtocol}//${location.host}`);
       let roomCode = null;
       let teamAReady = false,
         teamBReady = false;
@@ -269,7 +270,7 @@
           gameParams.set("id", gameId);
           history.replaceState(null, "", `${location.pathname}?${gameParams}`);
           document.getElementById("roomCode").textContent = roomCode;
-          const joinUrl = `http://${msg.ip}:${msg.port}/controller.html?room=${roomCode}`;
+          const joinUrl = `${location.protocol}//${location.host}/controller.html?room=${roomCode}`;
           new QRCode(document.getElementById("qrcode"), {
             text: joinUrl,
             width: 150,

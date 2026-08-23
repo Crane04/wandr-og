@@ -136,6 +136,6 @@ function localIp() {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Chicken Invaders server running:`);
-  console.log(`  Laptop (game):      http://localhost:${PORT}/game.html`);
+  console.log(`  Laptop (game):      http://localhost:${PORT}/`);
   console.log(`  Phone (controller): http://${localIp()}:${PORT}/controller.html`);
 });

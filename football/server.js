@@ -117,6 +117,6 @@ wss.on('connection', (ws) => {
 const PORT = process.env.PORT || 3009;
 server.listen(PORT, () => {
   console.log(`Football server running:`);
-  console.log(`  Laptop (game):      http://localhost:${PORT}/game.html`);
+  console.log(`  Laptop (game):      http://localhost:${PORT}/`);
   console.log(`  Phone (controller): http://${localIp()}:${PORT}/controller.html`);
 });
