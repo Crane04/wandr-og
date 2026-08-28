@@ -930,7 +930,7 @@
       }
 
       function tryBoost(car) {
-        if (phase !== 'racing' || car.finished || car.spinTimer > 0) return;
+        if (phase !== 'racing' || paused || car.finished || car.spinTimer > 0) return;
         if (!car.boosting && car.boostCharge >= 30) {
           triggerBoost(car, 1.0 + (car.boostCharge / 100) * 2.2); // was 0.4 + *1.1 — too short
           car.boostCharge = 0;
@@ -963,12 +963,12 @@
       // Triangle: cycle which held item is "selected" (armed) without using
       // it — Square fires whichever one is currently selected.
       function cycleSelectedItem(car) {
-        if (phase !== 'racing' || car.finished || car.items.length === 0) return;
+        if (phase !== 'racing' || paused || car.finished || car.items.length === 0) return;
         car.selectedIndex = (car.selectedIndex + 1) % car.items.length;
       }
 
       function tryUseItem(car) {
-        if (phase !== 'racing' || car.finished || car.items.length === 0) return;
+        if (phase !== 'racing' || paused || car.finished || car.items.length === 0) return;
         const idx = clamp(car.selectedIndex, 0, car.items.length - 1);
         const kind = car.items.splice(idx, 1)[0];
         car.selectedIndex = car.items.length ? Math.min(idx, car.items.length - 1) : 0;
