@@ -112,7 +112,7 @@
   <body>
     <div id="lobby">
       <h1>NITRO RACING</h1>
-      <p>Scan with your phone to become a driver</p>
+      <p>Scan with your phone to become a driver — or plug in a gamepad</p>
       <div id="roomCode">----</div>
       <div id="qrcode"></div>
       <div id="players">Waiting for driver...</div>
@@ -253,6 +253,83 @@
       let raceTimeLimitMs = 0;
 
       const controls = { 1: { left: false, right: false, up: false, down: false }, 2: { left: false, right: false, up: false, down: false } };
+
+      // Gamepad API support — a controller plugged into (or paired with)
+      // this machine drives the same `controls[playerNum]` state a phone
+      // controller's WebSocket messages do, so tickRace/updateCarPhysics
+      // don't need to know which input source is in play. A gamepad claims
+      // whichever human slot (1 or 2) isn't already held by a connected
+      // phone, so the two sources can't fight over the same car; it also
+      // adds itself to `connectedPlayers` so the lobby's player count and
+      // Play-button gating see it exactly like a phone joining.
+      const gamepadSlots = {}; // gamepad.index -> playerNum
+      const gamepadPrevButtons = {}; // gamepad.index -> {start, boost, useItem, item} from last poll, for edge detection
+      const GAMEPAD_DEADZONE = 0.25;
+
+      function assignGamepadSlot(gp) {
+        if (gamepadSlots[gp.index] != null) return gamepadSlots[gp.index];
+        for (const n of [1, 2]) {
+          if (!connectedPlayers.has(n)) {
+            gamepadSlots[gp.index] = n;
+            connectedPlayers.add(n);
+            syncLobby();
+            return n;
+          }
+        }
+        return null;
+      }
+      window.addEventListener('gamepadconnected', (e) => assignGamepadSlot(e.gamepad));
+      window.addEventListener('gamepaddisconnected', (e) => {
+        const n = gamepadSlots[e.gamepad.index];
+        if (n == null) return;
+        connectedPlayers.delete(n);
+        delete gamepadSlots[e.gamepad.index];
+        delete gamepadPrevButtons[e.gamepad.index];
+        syncLobby();
+      });
+
+      // Buttons/axes follow the standard Gamepad API mapping (Xbox/PS/most
+      // generic pads report this): D-pad or the left stick steers, A or
+      // either trigger accelerates, B or B/L2 brakes, and the three other
+      // face buttons mirror the phone controller's ○/□/△ layout (boost /
+      // use item / cycle item). Called every frame regardless of phase —
+      // there's no "button held" event, only a snapshot to poll — and it's
+      // a harmless no-op outside racing since tryBoost/tryUseItem/etc.
+      // already guard on phase themselves.
+      function pollGamepads() {
+        const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+        for (const gp of pads) {
+          if (!gp) continue;
+          const playerNum = gamepadSlots[gp.index] ?? assignGamepadSlot(gp);
+          if (playerNum == null) continue;
+          const c = controls[playerNum];
+          if (!c) continue;
+
+          const axisX = gp.axes[0] || 0;
+          const dpadLeft = !!gp.buttons[14]?.pressed, dpadRight = !!gp.buttons[15]?.pressed;
+          const dpadUp = !!gp.buttons[12]?.pressed, dpadDown = !!gp.buttons[13]?.pressed;
+          const btnA = !!gp.buttons[0]?.pressed;
+          const rt = !!gp.buttons[7]?.pressed || (gp.buttons[7]?.value ?? 0) > 0.4;
+          const lt = !!gp.buttons[6]?.pressed || (gp.buttons[6]?.value ?? 0) > 0.4;
+          const boost = !!gp.buttons[1]?.pressed;
+          const useItem = !!gp.buttons[2]?.pressed;
+          const item = !!gp.buttons[3]?.pressed;
+          const start = !!gp.buttons[9]?.pressed;
+
+          c.left = dpadLeft || axisX < -GAMEPAD_DEADZONE;
+          c.right = dpadRight || axisX > GAMEPAD_DEADZONE;
+          c.up = dpadUp || btnA || rt;
+          c.down = dpadDown || lt;
+
+          const prev = gamepadPrevButtons[gp.index] || {};
+          const car = getCarByPlayerNum(playerNum);
+          if (start && !prev.start) togglePause();
+          if (boost && !prev.boost && car) tryBoost(car);
+          if (useItem && !prev.useItem && car) tryUseItem(car);
+          if (item && !prev.item && car) cycleSelectedItem(car);
+          gamepadPrevButtons[gp.index] = { start, boost, useItem, item };
+        }
+      }
 
       function roundRectPath(c, x, y, w, h, r) {
         c.beginPath();
@@ -1554,6 +1631,7 @@
         const now = performance.now();
         const dt = Math.min(0.033, (now - lastFrame) / 1000 || 0.016);
         lastFrame = now;
+        pollGamepads();
         if (phase === 'countdown') updateCountdown(now);
         else if (phase === 'racing' && !paused) { tickRace(dt, now); updateTimerDisplay(now); }
         if (phase !== 'lobby') draw();
