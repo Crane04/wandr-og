@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0b0f1e" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <title>Nitro Racing — Controller</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Baloo+2:wght@600;800&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #0b0f1e;
+        touch-action: none;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-user-drag: none;
+        touch-action: none;
+      }
+      html,
+      body {
+        height: 100%;
+        background: radial-gradient(circle at 50% 20%, #24345f 0, #0c1226 55%, #05070f 100%);
+        color: #fff;
+        font-family: "Baloo 2", Arial, sans-serif;
+        overflow: hidden;
+        touch-action: none;
+      }
+      .display-font { font-family: "Bangers", cursive; letter-spacing: 2px; }
+      #status {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        text-align: center;
+        padding: max(7px, env(safe-area-inset-top)) 12px 7px;
+        font-size: 12px;
+        font-weight: 700;
+        background: rgba(0, 0, 0, 0.72);
+        z-index: 5;
+      }
+      #status.connected { color: #7dffb0; }
+      #status.error { color: #ff4444; }
+      #joinScreen {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 20px;
+      }
+      #joinScreen h1 { font-size: 34px; color: #ffd23f; text-shadow: 0 0 14px rgba(255,178,0,.5); margin-bottom: 4px; }
+      #joinScreen p { color: #a9bce0; }
+      #joinScreen input {
+        font-size: 28px;
+        text-align: center;
+        letter-spacing: 6px;
+        padding: 10px;
+        width: 180px;
+        text-transform: uppercase;
+        border-radius: 8px;
+        border: none;
+        font-family: "Baloo 2", sans-serif;
+        font-weight: 800;
+      }
+      #joinScreen button {
+        font-size: 18px;
+        padding: 12px 26px;
+        background: linear-gradient(180deg,#ffe066,#ffb300);
+        color: #402700;
+        border: none;
+        border-radius: 10px;
+        font-weight: 800;
+        box-shadow: 0 4px 0 rgba(0,0,0,.35);
+      }
+      #controls {
+        display: none;
+        height: 100%;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+        padding: 38px max(18px, env(safe-area-inset-right)) 10px max(18px, env(safe-area-inset-left));
+      }
+      .gamepad {
+        position: relative;
+        width: min(92vw, 760px);
+        height: min(76vh, 330px);
+        min-height: 220px;
+        display: grid;
+        grid-template-columns: 1fr 0.78fr 1fr;
+        align-items: center;
+        padding: 28px 7%;
+        background: linear-gradient(145deg, #2b3050 0%, #171a30 48%, #0b0d18 100%);
+        border: 2px solid #4a54a0;
+        border-radius: 34% 34% 25% 25% / 25% 25% 42% 42%;
+        box-shadow: inset 0 3px 5px rgba(255, 255, 255, 0.12), inset 0 -10px 18px #05060c, 0 18px 40px rgba(0, 0, 0, 0.65);
+      }
+      .grip {
+        position: absolute;
+        bottom: -5%;
+        width: 28%;
+        height: 52%;
+        background: linear-gradient(160deg, #1e2340, #0a0c18);
+        z-index: -1;
+      }
+      .grip.left { left: 2%; transform: rotate(10deg); border-radius: 35% 20% 55% 50%; }
+      .grip.right { right: 2%; transform: rotate(-10deg); border-radius: 20% 35% 50% 55%; }
+      .btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        color: #fff;
+        background: linear-gradient(145deg, #2b3050, #171a30);
+        border: 2px solid #4a54a0;
+        box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.12), 0 4px 7px rgba(0, 0, 0, 0.7);
+      }
+      .btn.active {
+        transform: scale(0.94);
+        box-shadow: inset 0 3px 9px rgba(0, 0, 0, 0.7);
+        filter: brightness(1.25);
+      }
+      .dpad {
+        position: relative;
+        width: clamp(120px, 19vw, 160px);
+        aspect-ratio: 1;
+        justify-self: start;
+      }
+      .dpad::before, .dpad::after {
+        content: "";
+        position: absolute;
+        background: linear-gradient(145deg, #262b48, #121428);
+        border: 2px solid #454e94;
+        box-shadow: 0 5px 8px #05060c;
+        border-radius: 9px;
+      }
+      .dpad::before { left: 0; top: 33%; width: 100%; height: 34%; }
+      .dpad::after { left: 33%; top: 0; width: 34%; height: 100%; }
+      .dpad .btn {
+        position: absolute;
+        z-index: 3;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        font-size: clamp(18px, 3.6vw, 28px);
+        color: #aeb6ff;
+      }
+      #leftBtn { left: 0; top: 33%; width: 33%; height: 34%; }
+      #rightBtn { right: 0; top: 33%; width: 33%; height: 34%; }
+      #upBtn { left: 33%; top: 0; width: 34%; height: 33%; }
+      #downBtn { left: 33%; bottom: 0; width: 34%; height: 33%; }
+      .center-panel {
+        align-self: center;
+        text-align: center;
+        color: #7f8ac2;
+        font: 800 clamp(9px, 1.5vw, 12px) "Baloo 2", Arial, sans-serif;
+        letter-spacing: 2px;
+      }
+      .center-panel .display-font { font-size: clamp(16px, 2.6vw, 22px); color: #ffd23f; margin-bottom: 6px; }
+      #startControl {
+        width: min(100%, 96px);
+        margin: 0 auto 8px;
+        padding: 7px 10px;
+        border-radius: 999px;
+        font: 800 clamp(9px, 1.5vw, 12px) Arial, sans-serif;
+        letter-spacing: 1px;
+      }
+      .face-buttons {
+        position: relative;
+        width: clamp(140px, 22vw, 194px);
+        aspect-ratio: 1;
+        justify-self: end;
+      }
+      .face-buttons .btn {
+        position: absolute;
+        width: 36%;
+        height: 36%;
+        border-radius: 50%;
+        font-size: clamp(16px, 3.4vw, 26px);
+      }
+      #triangleBtn { left: 32%; top: 0; }
+      #circleBtn { right: 0; top: 32%; }
+      #crossBtn { left: 32%; bottom: 0; }
+      #squareBtn { left: 0; top: 32%; }
+
+      #rotatePrompt {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+        background: #05070f;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        text-align: center;
+        padding: 24px;
+      }
+      #rotatePrompt .phone-icon {
+        width: 50px;
+        height: 86px;
+        border: 4px solid #ffd23f;
+        border-radius: 10px;
+        position: relative;
+        animation: rotatePhone 1.8s ease-in-out infinite;
+      }
+      #rotatePrompt .phone-icon::after {
+        content: "";
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 14px;
+        height: 3px;
+        background: #ffd23f;
+        border-radius: 2px;
+      }
+      #rotatePrompt p {
+        font-size: 18px;
+        color: #cfe1ff;
+        font-weight: 700;
+        max-width: 260px;
+      }
+      @keyframes rotatePhone {
+        0%, 12% { transform: rotate(0deg); }
+        50%, 62% { transform: rotate(-90deg); }
+        100% { transform: rotate(0deg); }
+      }
+      @media (orientation: portrait) {
+        #rotatePrompt { display: flex; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="rotatePrompt">
+      <div class="phone-icon"></div>
+      <p>Rotate your device to landscape to play</p>
+    </div>
+    <div id="status">Connecting...</div>
+    <div id="joinScreen">
+      <div style="text-align:center;max-width:320px">
+        <h1 class="display-font">NITRO RACING</h1>
+        <p>Enter the room code shown on the laptop</p>
+      </div>
+      <input id="roomInput" maxlength="4" placeholder="ABCD" />
+      <button id="joinBtn">Join Race</button>
+    </div>
+    <div id="controls">
+      <div class="gamepad">
+        <div class="grip left"></div>
+        <div class="grip right"></div>
+        <div class="dpad">
+          <button class="btn" id="upBtn">▲</button>
+          <button class="btn" id="leftBtn">◀</button>
+          <button class="btn" id="rightBtn">▶</button>
+          <button class="btn" id="downBtn">▼</button>
+        </div>
+        <div class="center-panel">
+          <div class="display-font">STEER</div>
+          <button class="btn" id="startControl">START</button>
+          <div>△ SELECT &middot; ○ BOOST</div>
+          <div>■ USE ITEM</div>
+        </div>
+        <div class="face-buttons">
+          <button class="btn" id="triangleBtn">▲</button>
+          <button class="btn" id="circleBtn">●</button>
+          <button class="btn" id="crossBtn">✕</button>
+          <button class="btn" id="squareBtn">■</button>
+        </div>
+      </div>
+    </div>
+    <script>
+      // Block pinch-zoom (Safari's nonstandard gesture events), multi-touch
+      // pinch, and double-tap-zoom — this is a full-screen touch controller,
+      // it should never actually zoom.
+      document.addEventListener('gesturestart', (e) => e.preventDefault());
+      document.addEventListener('gesturechange', (e) => e.preventDefault());
+      document.addEventListener('gestureend', (e) => e.preventDefault());
+      document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+      let lastTouchEnd = 0;
+      document.addEventListener('touchend', (e) => {
+        const now = Date.now();
+        if (now - lastTouchEnd <= 300) e.preventDefault();
+        lastTouchEnd = now;
+      }, { passive: false });
+
+      const params = new URLSearchParams(location.search);
+      const prefilledRoom = params.get('room');
+      const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${wsProtocol}//${location.host}`);
+      const status = document.getElementById('status');
+      const joinScreen = document.getElementById('joinScreen');
+      const controls = document.getElementById('controls');
+      const roomInput = document.getElementById('roomInput');
+      const controllerIdKey = 'racingControllerId';
+      let controllerId = localStorage.getItem(controllerIdKey);
+      if (!controllerId) {
+        controllerId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+        localStorage.setItem(controllerIdKey, controllerId);
+      }
+      let joinRequested = false;
+      function send(action, state) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'input', action, state }));
+      }
+      function bindHold(id, action) {
+        const el = document.getElementById(id);
+        const down = (e) => { e.preventDefault(); el.classList.add('active'); send(action, 'down'); };
+        const up = (e) => { e.preventDefault(); el.classList.remove('active'); send(action, 'up'); };
+        el.addEventListener('pointerdown', down);
+        el.addEventListener('pointerup', up);
+        el.addEventListener('pointercancel', up);
+        el.addEventListener('pointerleave', up);
+      }
+      bindHold('leftBtn', 'left');
+      bindHold('rightBtn', 'right');
+      bindHold('upBtn', 'up');           // D-pad up doubles the ✕ accelerate action
+      bindHold('downBtn', 'down');       // D-pad down is now the only brake control
+      bindHold('crossBtn', 'up');        // ✕ accelerate
+      bindHold('squareBtn', 'useItem');  // ■ fire the selected item (was brake — D-pad down covers that now)
+      bindHold('circleBtn', 'boost');    // ● nitro
+      bindHold('triangleBtn', 'item');   // ▲ cycle/select which held item is armed
+      document.getElementById('startControl').addEventListener('pointerdown', (e) => { e.preventDefault(); send('start', 'down'); });
+      document.getElementById('startControl').addEventListener('pointerup', (e) => { e.preventDefault(); send('start', 'up'); });
+      ws.onopen = () => {
+        status.textContent = 'Connected';
+        status.className = 'connected';
+        if (prefilledRoom) joinRoom(prefilledRoom);
+      };
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'joined') {
+          joinRequested = true;
+          status.textContent = `Joined room ${msg.room}`;
+          status.className = 'connected';
+          joinScreen.style.display = 'none';
+          controls.style.display = 'flex';
+        }
+        if (msg.type === 'join-error') {
+          joinRequested = false;
+          status.textContent = msg.message;
+          status.className = 'error';
+        }
+      };
+      function joinRoom(code) {
+        if (joinRequested || ws.readyState !== WebSocket.OPEN) return;
+        joinRequested = true;
+        const room = String(code || '').trim().toUpperCase();
+        if (!room) return;
+        roomInput.value = room;
+        ws.send(JSON.stringify({ type: 'join', room, controllerId }));
+      }
+      document.getElementById('joinBtn').addEventListener('click', () => {
+        joinRoom(roomInput.value);
+      });
+      roomInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('joinBtn').click();
+      });
+      if (prefilledRoom) roomInput.value = prefilledRoom.toUpperCase();
+    </script>
+  </body>
+</html>

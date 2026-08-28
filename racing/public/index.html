@@ -1,0 +1,1189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>Nitro Racing</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Baloo+2:wght@600;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: radial-gradient(circle at 50% 20%, #1a2a52, #060a18 65%, #020308 100%);
+        color: #fff;
+        font-family: "Baloo 2", Arial, sans-serif;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      h1, .display-font { font-family: "Bangers", cursive; letter-spacing: 2px; }
+      #lobby { text-align: center; max-width: 560px; padding: 16px; }
+      #lobby h1 { font-size: 52px; color: #ffd23f; text-shadow: 0 0 18px rgba(255,178,0,.55), 3px 3px 0 #d1420c; margin-bottom: 6px; }
+      #lobby p { color: #bcd0ff; }
+      #roomCode { font-size: 44px; letter-spacing: 8px; color: #7fffa0; margin: 12px 0; font-family: "Bangers", cursive; text-shadow: 0 0 12px rgba(120,255,150,.6); }
+      #qrcode { background: #fff; padding: 10px; display: inline-block; border-radius: 10px; }
+      .actions { margin-top: 16px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+      button { padding: 12px 24px; font-size: 16px; border: none; border-radius: 10px; font-family: "Baloo 2", sans-serif; font-weight: 800; cursor: pointer; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+      button:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,.35); }
+      #twoBtn { background: linear-gradient(180deg,#ffe066,#ffb300); color: #402700; }
+      #aiBtn { background: linear-gradient(180deg,#7dffb0,#12b866); color: #063017; }
+      #fullscreenBtn { margin-top: 12px; background: #1a2f66; color: #cfe1ff; border: 1px solid #5689e8; box-shadow: none; }
+      button:disabled { opacity: .4; cursor: not-allowed; }
+      #players { margin-top: 10px; color: #7fe8ff; font-weight: 700; }
+
+      .grid-preview { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+      .slot { width: 42px; height: 30px; border-radius: 6px; background: #1c2338; border: 2px solid #3a4568; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #66708f; }
+      .slot.human.joined { border-color: #fff; color: #08130a; box-shadow: 0 0 10px rgba(255,255,255,.5); }
+
+      .track-select { display: flex; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+      .track-card {
+        width: 148px; padding: 10px 12px; border-radius: 10px;
+        background: #141a2e; border: 2px solid #3a4568; cursor: pointer;
+        text-align: left; transition: border-color .15s, background .15s;
+      }
+      .track-card:hover { border-color: #5689e8; }
+      .track-card.selected { border-color: #ffd23f; background: #1e2540; box-shadow: 0 0 12px rgba(255,210,63,.35); }
+      .track-card .name { font-family: "Bangers", cursive; font-size: 18px; letter-spacing: 1px; color: #fff; }
+      .track-card .desc { font-size: 11px; color: #8fa0c9; margin-top: 4px; line-height: 1.4; }
+      .track-card .thumb { width: 100%; height: 40px; margin-top: 6px; }
+
+      canvas { display: none; position: fixed; inset: 0; width: 100vw; height: 100vh; background: #78c7ff; }
+
+      #topBar { display: none; position: fixed; top: 0; left: 0; right: 0; justify-content: center; padding: 8px; z-index: 3; pointer-events: none; }
+      #topBar span { padding: 6px 16px; border-radius: 999px; background: rgba(10,10,20,.6); border: 1px solid rgba(255,255,255,.2); font-weight: 800; letter-spacing: 1px; font-size: 13px; }
+
+      #countdownOverlay { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; z-index: 6; pointer-events: none; }
+      #countdownNum { font-family: "Bangers", cursive; font-size: 160px; text-shadow: 0 0 30px rgba(0,0,0,.6), 0 0 60px currentColor; animation: pop .35s ease; }
+      .c-three, .c-two { color: #ff4a4a; }
+      .c-one { color: #ffd23f; }
+      .c-go { color: #4dff6a; }
+      @keyframes pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+      #pauseOverlay { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 5; }
+      #pauseOverlay h2 { font-family: "Bangers", cursive; font-size: 54px; letter-spacing: 6px; color: #ffd23f; }
+
+      #podiumOverlay { display: none; position: fixed; inset: 0; background: rgba(4,6,16,.92); align-items: center; justify-content: center; flex-direction: column; gap: 14px; z-index: 7; }
+      #podiumTitle { font-family: "Bangers", cursive; font-size: 44px; color: #ffd23f; text-shadow: 0 0 16px rgba(255,178,0,.6); }
+      #podiumList { width: min(92vw, 460px); display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
+      .podium-row { display: grid; grid-template-columns: 46px 22px 1fr 70px; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,.06); }
+      .podium-row.me { background: rgba(255,210,63,.18); border: 1px solid rgba(255,210,63,.5); }
+      .podium-row .pos { font-family: "Bangers", cursive; font-size: 20px; color: #cfe1ff; }
+      .podium-row .swatch { width: 16px; height: 16px; border-radius: 50%; }
+      .podium-row .time { text-align: right; font-variant-numeric: tabular-nums; color: #9fb0d8; }
+    </style>
+  </head>
+  <body>
+    <div id="lobby">
+      <h1>NITRO RACING</h1>
+      <p>Scan with your phone to become a driver</p>
+      <div id="roomCode">----</div>
+      <div id="qrcode"></div>
+      <div id="players">Waiting for driver...</div>
+      <div id="gridPreview" class="grid-preview"></div>
+      <div id="trackSelect" class="track-select"></div>
+      <div class="actions">
+        <button id="twoBtn" disabled>Two Players</button>
+        <button id="aiBtn" disabled>Play vs CPU</button>
+      </div>
+      <br />
+      <button id="fullscreenBtn">Enter Fullscreen</button>
+    </div>
+
+    <div id="topBar"><span id="topBarLabel">RACE</span></div>
+    <canvas id="game" width="1280" height="720"></canvas>
+    <div id="countdownOverlay"><div id="countdownNum" class="display-font">3</div></div>
+    <div id="pauseOverlay"><h2>PAUSED</h2></div>
+    <div id="podiumOverlay">
+      <div id="podiumTitle">FINISH</div>
+      <div id="podiumList"></div>
+      <button id="restartBtn">Play Again</button>
+    </div>
+
+    <script src="js/track.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/ai.js"></script>
+    <script src="js/kart-sprite.js"></script>
+    <script>
+      const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${wsProtocol}//${location.host}`);
+      const gameParams = new URLSearchParams(location.search);
+      const requestedId = (gameParams.get('id') || localStorage.getItem('racingGameId') || '').toUpperCase();
+      let gameId = /^[A-Z2-9]{4}$/.test(requestedId) ? requestedId : null;
+      let mode = 'two';
+      let connectedPlayers = new Set();
+
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+
+      const TOTAL_KARTS = 8;
+      const TARGET_LAPS = 3;
+      const MAX_SPEED = 12000;
+      const ACCEL = MAX_SPEED / 5;
+      const BRAKE_DECEL = MAX_SPEED;
+      const ENGINE_DECEL = MAX_SPEED / 5;
+      const OFFROAD_MAX_SPEED = MAX_SPEED / 4;
+      const CENTRIFUGAL = 0.2; // was 0.3 — eased so holding a drift line fights the player less
+      const BOOST_MULTIPLIER = 1.35;
+      const COLLISION_X = 0.24; // lateral radius (road units) at which two karts start touching
+      const COLLISION_Z = 260;  // longitudinal radius (world units) — a minimum following gap
+      const ITEM_CAP = 6;
+      const ITEM_KINDS = ['boost', 'bomb', 'side', 'swap', 'slow', 'shield'];
+      const ITEM_COLORS = { boost: '#ffd23f', bomb: '#ff5a5a', side: '#ff8a3d', swap: '#c77dff', slow: '#4dd2ff', shield: '#4dff9e' };
+      // Font Awesome 6 Free Solid glyphs: bolt, bomb, hand-fist, right-left, snowflake.
+      const ITEM_ICON_GLYPHS = { boost: '', bomb: '', side: '', swap: '', slow: '' , shield: '' };
+      let faReady = false;
+      if (document.fonts && document.fonts.load) {
+        document.fonts.load('900 32px "Font Awesome 6 Free"').then(() => { faReady = true; }).catch(() => {});
+      }
+      const PALETTE = ['#4dff4d', '#ff5a5a', '#4dd2ff', '#ffcc33', '#c77dff', '#ff8a3d', '#7dffb0', '#ff5ac8'];
+      KartSprite.init('assets/car.jpeg', PALETTE);
+
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+      let selectedTrackId = Track.DEFAULT_ID;
+      let track = Track.buildTrack(selectedTrackId);
+      let cars = [];
+      let itemBoxes = [];
+      let projectiles = [];
+      let phase = 'lobby'; // lobby -> countdown -> racing -> finished
+      let paused = false;
+      let humanCount = 1;
+      let raceStartedAt = 0;
+      let countdownStartedAt = 0;
+      let lastFrame = 0;
+
+      const controls = { 1: { left: false, right: false, up: false, down: false }, 2: { left: false, right: false, up: false, down: false } };
+
+      function roundRectPath(c, x, y, w, h, r) {
+        c.beginPath();
+        c.moveTo(x + r, y);
+        c.arcTo(x + w, y, x + w, y + h, r);
+        c.arcTo(x + w, y + h, x, y + h, r);
+        c.arcTo(x, y + h, x, y, r);
+        c.arcTo(x, y, x + w, y, r);
+        c.closePath();
+      }
+
+      function shadeColor(hex, percent) {
+        const n = parseInt(hex.slice(1), 16);
+        const r = clamp(((n >> 16) & 255) + percent, 0, 255);
+        const g = clamp(((n >> 8) & 255) + percent, 0, 255);
+        const b = clamp((n & 255) + percent, 0, 255);
+        return `rgb(${r | 0},${g | 0},${b | 0})`;
+      }
+
+      // Rear 3/4 view of a low, wide car — the angle you see other racers
+      // from in a chase-cam kart racer. `s` is the body half-width unit.
+      function drawKartShape(c, s, car) {
+        const w = s;
+        const bodyH = s * 0.62;
+
+        c.fillStyle = 'rgba(0,0,0,.4)';
+        c.beginPath(); c.ellipse(0, s * 0.08, w * 0.98, s * 0.15, 0, 0, Math.PI * 2); c.fill();
+
+        // Rear tires peeking past the body on each side.
+        c.fillStyle = '#161616';
+        c.fillRect(-w * 1.08, -bodyH * 0.32, w * 0.24, bodyH * 0.58);
+        c.fillRect(w * 0.84, -bodyH * 0.32, w * 0.24, bodyH * 0.58);
+
+        // Lower body / rear fascia — wide and low, not a tall box.
+        const grad = c.createLinearGradient(0, -bodyH * 1.05, 0, s * 0.05);
+        grad.addColorStop(0, shadeColor(car.color, 45));
+        grad.addColorStop(0.55, car.color);
+        grad.addColorStop(1, shadeColor(car.color, -40));
+        c.fillStyle = grad;
+        roundRectPath(c, -w, -bodyH * 0.58, w * 2, bodyH * 0.6, s * 0.16);
+        c.fill();
+
+        // Bumper accent strip.
+        c.fillStyle = shadeColor(car.color, -50);
+        roundRectPath(c, -w * 0.96, -bodyH * 0.16, w * 1.92, bodyH * 0.18, s * 0.05);
+        c.fill();
+
+        // Greenhouse / rear windshield, narrower and set back on the roofline.
+        c.fillStyle = '#12161f';
+        roundRectPath(c, -w * 0.6, -bodyH * 1.18, w * 1.2, bodyH * 0.66, s * 0.12);
+        c.fill();
+        c.fillStyle = 'rgba(150,215,255,.55)';
+        roundRectPath(c, -w * 0.48, -bodyH * 1.08, w * 0.96, bodyH * 0.4, s * 0.08);
+        c.fill();
+
+        // Spoiler.
+        c.fillStyle = shadeColor(car.color, -20);
+        c.fillRect(-w * 0.74, -bodyH * 1.3, w * 1.48, s * 0.08);
+        c.fillRect(-w * 0.74, -bodyH * 1.3, s * 0.06, bodyH * 0.3);
+        c.fillRect(w * 0.68, -bodyH * 1.3, s * 0.06, bodyH * 0.3);
+
+        // Tail lights.
+        c.fillStyle = 'rgba(255,45,45,.92)';
+        roundRectPath(c, -w * 0.9, -bodyH * 0.48, w * 0.24, bodyH * 0.15, s * 0.03);
+        c.fill();
+        roundRectPath(c, w * 0.66, -bodyH * 0.48, w * 0.24, bodyH * 0.15, s * 0.03);
+        c.fill();
+
+        if (car.boosting) {
+          c.fillStyle = 'rgba(255,150,30,.55)';
+          c.beginPath(); c.ellipse(-w * 0.45, bodyH * 0.05, s * 0.16, s * 0.3, 0, 0, Math.PI * 2); c.fill();
+          c.beginPath(); c.ellipse(w * 0.45, bodyH * 0.05, s * 0.16, s * 0.3, 0, 0, Math.PI * 2); c.fill();
+          c.fillStyle = 'rgba(255,220,140,.85)';
+          c.beginPath(); c.ellipse(-w * 0.45, bodyH * 0.02, s * 0.07, s * 0.14, 0, 0, Math.PI * 2); c.fill();
+          c.beginPath(); c.ellipse(w * 0.45, bodyH * 0.02, s * 0.07, s * 0.14, 0, 0, Math.PI * 2); c.fill();
+        }
+      }
+
+      // Real photo asset, chroma-keyed + recolored per kart (see kart-sprite.js).
+      // Falls back to the drawn shape above until it finishes loading.
+      function drawKartSpriteImage(c, s, car, sprite) {
+        c.fillStyle = 'rgba(0,0,0,.4)';
+        c.beginPath(); c.ellipse(0, s * 0.08, s * 0.98, s * 0.15, 0, 0, Math.PI * 2); c.fill();
+        const w = s * 2.15;
+        const h = w / sprite.aspect;
+        c.drawImage(sprite.canvas, -w / 2, -h * 0.94, w, h);
+        if (car.boosting) {
+          c.fillStyle = 'rgba(255,150,30,.55)';
+          c.beginPath(); c.ellipse(-w * 0.22, s * 0.05, s * 0.16, s * 0.3, 0, 0, Math.PI * 2); c.fill();
+          c.beginPath(); c.ellipse(w * 0.22, s * 0.05, s * 0.16, s * 0.3, 0, 0, Math.PI * 2); c.fill();
+          c.fillStyle = 'rgba(255,220,140,.85)';
+          c.beginPath(); c.ellipse(-w * 0.22, s * 0.02, s * 0.07, s * 0.14, 0, 0, Math.PI * 2); c.fill();
+          c.beginPath(); c.ellipse(w * 0.22, s * 0.02, s * 0.07, s * 0.14, 0, 0, Math.PI * 2); c.fill();
+        }
+      }
+
+      // While in a hole: sink-then-pop over the 3s stun (fast sink, held
+      // small in the middle, fast pop back out at the end) instead of the
+      // normal kart draw.
+      function drawHoleAnimation(c, s, car) {
+        const t = clamp(1 - car.holeTimer / 3, 0, 1);
+        let scale, alpha;
+        if (t < 0.2) { const k = t / 0.2; scale = 1 - k * 0.75; alpha = 1 - k * 0.5; }
+        else if (t < 0.8) { scale = 0.25; alpha = 0.5; }
+        else { const k = (t - 0.8) / 0.2; scale = 0.25 + k * 0.75; alpha = 0.5 + k * 0.5; }
+        c.save();
+        c.globalAlpha = 0.3 * (1 - Math.abs(t - 0.5) * 1.2);
+        c.strokeStyle = '#8a7358';
+        c.lineWidth = s * 0.06;
+        c.beginPath(); c.ellipse(0, s * 0.1, s * 0.85, s * 0.22, 0, 0, Math.PI * 2); c.stroke();
+        c.restore();
+        c.save();
+        c.globalAlpha = alpha;
+        c.scale(scale, scale);
+        c.rotate(Math.sin(performance.now() * 0.02) * 0.3 * (1 - Math.abs(t - 0.5) * 2));
+        const sprite = KartSprite.get(car.color);
+        if (sprite) drawKartSpriteImage(c, s, car, sprite);
+        else drawKartShape(c, s, car);
+        c.restore();
+      }
+
+      function drawItemIcon(c, x, y, r, kind, selected) {
+        c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2);
+        c.fillStyle = 'rgba(8,8,16,.6)';
+        c.fill();
+        c.strokeStyle = ITEM_COLORS[kind] || '#fff';
+        c.lineWidth = Math.max(1, r * (selected ? 0.28 : 0.16));
+        c.stroke();
+        if (selected) {
+          c.beginPath(); c.arc(x, y, r * 1.32, 0, Math.PI * 2);
+          c.strokeStyle = 'rgba(255,255,255,.85)';
+          c.lineWidth = Math.max(1, r * 0.1);
+          c.stroke();
+        }
+        const glyph = ITEM_ICON_GLYPHS[kind];
+        if (faReady && glyph) {
+          c.fillStyle = ITEM_COLORS[kind] || '#fff';
+          c.font = `900 ${r * 1.4}px "Font Awesome 6 Free"`;
+          c.textAlign = 'center';
+          c.textBaseline = 'middle';
+          c.fillText(glyph, x, y + r * 0.05);
+        } else {
+          c.fillStyle = ITEM_COLORS[kind] || '#fff';
+          c.beginPath(); c.arc(x, y, r * 0.48, 0, Math.PI * 2); c.fill();
+        }
+      }
+
+      function drawItemRow(c, s, car) {
+        if (!car.items.length) return;
+        const r = s * 0.12;
+        const gap = r * 2.6;
+        const startX = -((car.items.length - 1) * gap) / 2;
+        const y = -s * 1.55;
+        car.items.forEach((kind, i) => drawItemIcon(c, startX + i * gap, y, r, kind, i === car.selectedIndex));
+      }
+
+      function drawShieldBubble(c, s, car) {
+        const pulse = 0.75 + 0.25 * Math.sin(performance.now() * 0.006);
+        const fadeOut = car.shieldTimer < 1.5 ? car.shieldTimer / 1.5 : 1; // flicker out in the last 1.5s
+        c.save();
+        c.globalAlpha = 0.28 * pulse * fadeOut;
+        c.fillStyle = ITEM_COLORS.shield;
+        c.beginPath(); c.ellipse(0, -s * 0.55, s * 1.15, s * 1.35, 0, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = 0.65 * pulse * fadeOut;
+        c.strokeStyle = ITEM_COLORS.shield;
+        c.lineWidth = Math.max(1, s * 0.05);
+        c.beginPath(); c.ellipse(0, -s * 0.55, s * 1.15, s * 1.35, 0, 0, Math.PI * 2); c.stroke();
+        c.restore();
+      }
+
+      function drawKart(c, s, car) {
+        if (car.holeTimer > 0) { drawHoleAnimation(c, s, car); return; }
+        const sprite = KartSprite.get(car.color);
+        if (sprite) drawKartSpriteImage(c, s, car, sprite);
+        else drawKartShape(c, s, car);
+        if (car.shieldTimer > 0) drawShieldBubble(c, s, car);
+        drawItemRow(c, s, car);
+      }
+
+      function drawItemBoxShape(c, s) {
+        const spin = Math.sin(performance.now() * 0.006);
+        c.save();
+        c.scale(0.6 + Math.abs(spin) * 0.4, 1);
+        c.fillStyle = '#ffcc33';
+        c.strokeStyle = '#8a5a00';
+        c.lineWidth = Math.max(1, s * 0.06);
+        roundRectPath(c, -s * 0.35, -s * 0.7, s * 0.7, s * 0.7, s * 0.1);
+        c.fill(); c.stroke();
+        c.fillStyle = '#8a5a00';
+        c.font = `900 ${Math.max(6, s * 0.5)}px Arial`;
+        c.textAlign = 'center';
+        c.fillText('?', 0, -s * 0.22);
+        c.restore();
+      }
+
+      function drawBombShape(c, s) {
+        c.fillStyle = '#3a2a2a';
+        c.beginPath(); c.arc(0, -s * 0.3, s * 0.4, 0, Math.PI * 2); c.fill();
+        c.fillStyle = 'rgba(255,255,255,.35)';
+        c.beginPath(); c.arc(-s * 0.12, -s * 0.42, s * 0.12, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = '#ff5a3a';
+        c.lineWidth = Math.max(1, s * 0.06);
+        c.beginPath(); c.moveTo(0, -s * 0.7); c.lineTo(s * 0.1, -s * 0.85); c.stroke();
+      }
+
+      function drawSwapShape(c, s) {
+        c.fillStyle = '#c77dff';
+        c.beginPath(); c.arc(0, -s * 0.3, s * 0.38, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = 'rgba(255,255,255,.65)';
+        c.lineWidth = Math.max(1, s * 0.05);
+        c.beginPath(); c.arc(0, -s * 0.3, s * 0.22, 0.4, Math.PI * 1.6); c.stroke();
+        c.beginPath(); c.arc(0, -s * 0.3, s * 0.22, Math.PI * 1.4, Math.PI * 2.6); c.stroke();
+      }
+
+      function drawSlowShape(c, s) {
+        c.fillStyle = 'rgba(77,210,255,.8)';
+        c.beginPath(); c.ellipse(0, -s * 0.28, s * 0.4, s * 0.32, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = 'rgba(255,255,255,.5)';
+        c.beginPath(); c.ellipse(-s * 0.1, -s * 0.4, s * 0.1, s * 0.07, 0, 0, Math.PI * 2); c.fill();
+      }
+
+      function drawProjectileShape(c, s, kind) {
+        if (kind === 'swap') drawSwapShape(c, s);
+        else if (kind === 'slow') drawSlowShape(c, s);
+        else drawBombShape(c, s);
+      }
+
+      // Flattened ground decals — very short vertical extent so they read
+      // as lying on the road rather than standing objects.
+      function drawGreasePatchShape(c, s) {
+        c.fillStyle = 'rgba(40,35,25,.55)';
+        c.beginPath(); c.ellipse(0, 0, s * 0.9, s * 0.22, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = 'rgba(90,78,55,.35)';
+        c.beginPath(); c.ellipse(-s * 0.2, -s * 0.04, s * 0.35, s * 0.08, 0, 0, Math.PI * 2); c.fill();
+      }
+
+      function drawBoostPadShape(c, s) {
+        const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.008);
+        c.fillStyle = `rgba(255,180,40,${0.35 * pulse})`;
+        c.beginPath(); c.ellipse(0, 0, s * 0.85, s * 0.22, 0, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = `rgba(255,220,120,${0.8 * pulse})`;
+        c.lineWidth = Math.max(1, s * 0.05);
+        for (let i = -1; i <= 1; i++) {
+          c.beginPath();
+          c.moveTo(i * s * 0.3 - s * 0.15, s * 0.1);
+          c.lineTo(i * s * 0.3, -s * 0.12);
+          c.lineTo(i * s * 0.3 + s * 0.15, s * 0.1);
+          c.stroke();
+        }
+      }
+
+      function drawHoleShape(c, s) {
+        const grad = c.createRadialGradient(0, 0, s * 0.05, 0, 0, s * 0.85);
+        grad.addColorStop(0, 'rgba(5,5,8,.95)');
+        grad.addColorStop(1, 'rgba(20,15,10,.15)');
+        c.fillStyle = grad;
+        c.beginPath(); c.ellipse(0, 0, s * 0.85, s * 0.24, 0, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = 'rgba(0,0,0,.6)';
+        c.lineWidth = Math.max(1, s * 0.05);
+        c.beginPath(); c.ellipse(0, 0, s * 0.85, s * 0.24, 0, 0, Math.PI * 2); c.stroke();
+      }
+
+      // Roadside dressing, drawn as static billboards alongside the hazards
+      // above — trees, lampposts, and guardrail sections.
+      function drawTreeShape(c, s) {
+        c.fillStyle = 'rgba(0,0,0,.3)';
+        c.beginPath(); c.ellipse(0, s * 0.05, s * 0.45, s * 0.11, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#6b4a2a';
+        c.fillRect(-s * 0.07, -s * 0.85, s * 0.14, s * 0.9);
+        const grad = c.createRadialGradient(-s * 0.15, -s * 1.5, s * 0.1, 0, -s * 1.35, s * 0.55);
+        grad.addColorStop(0, '#5fbf5f');
+        grad.addColorStop(1, '#2f7d3b');
+        c.fillStyle = grad;
+        c.beginPath(); c.arc(0, -s * 1.35, s * 0.55, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(-s * 0.28, -s * 1.12, s * 0.38, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(s * 0.28, -s * 1.12, s * 0.38, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(0, -s * 1.75, s * 0.32, 0, Math.PI * 2); c.fill();
+      }
+
+      function drawLampShape(c, s) {
+        c.fillStyle = 'rgba(0,0,0,.3)';
+        c.beginPath(); c.ellipse(0, s * 0.05, s * 0.2, s * 0.06, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#3a3f4a';
+        c.fillRect(-s * 0.038, -s * 2.5, s * 0.076, s * 2.55);
+        // Small horizontal arm the lamp head hangs from.
+        c.fillRect(-s * 0.038, -s * 2.5, s * 0.28, s * 0.06);
+        const glow = c.createRadialGradient(s * 0.24, -s * 2.55, 0, s * 0.24, -s * 2.55, s * 0.42);
+        glow.addColorStop(0, 'rgba(255,220,140,.9)');
+        glow.addColorStop(1, 'rgba(255,220,140,0)');
+        c.fillStyle = glow;
+        c.beginPath(); c.arc(s * 0.24, -s * 2.55, s * 0.42, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#565c68';
+        c.beginPath(); c.ellipse(s * 0.24, -s * 2.55, s * 0.14, s * 0.09, 0, 0, Math.PI * 2); c.fill();
+      }
+
+      function drawRailShape(c, s) {
+        c.fillStyle = 'rgba(0,0,0,.25)';
+        c.fillRect(-s * 0.9, s * 0.02, s * 1.8, s * 0.06);
+        c.fillStyle = '#9aa3ad';
+        for (let i = -2; i <= 2; i++) c.fillRect(i * s * 0.36 - s * 0.04, -s * 0.5, s * 0.08, s * 0.55);
+        c.fillStyle = '#c7ccd2';
+        c.fillRect(-s * 0.9, -s * 0.42, s * 1.8, s * 0.09);
+        c.fillRect(-s * 0.9, -s * 0.18, s * 1.8, s * 0.07);
+        c.fillStyle = 'rgba(255,255,255,.4)';
+        c.fillRect(-s * 0.9, -s * 0.42, s * 1.8, s * 0.02);
+      }
+
+      function drawSceneryShape(c, s, kind) {
+        if (kind === 'lamp') drawLampShape(c, s);
+        else if (kind === 'rail') drawRailShape(c, s);
+        else drawTreeShape(c, s);
+      }
+
+      function createCar(opts) {
+        return {
+          id: opts.id, name: opts.name, color: opts.color, playerNum: opts.playerNum, isAI: opts.isAI,
+          x: opts.startX, totalDistance: opts.startZ,
+          speed: 0, maxSpeed: MAX_SPEED,
+          boostCharge: 0, boosting: false, boostTimer: 0,
+          items: [], selectedIndex: 0, spinTimer: 0, slowTimer: 0, shieldTimer: 0, holeTimer: 0, holeEscapeZ: 0, boostPadCooldown: 0,
+          laps: 0, lapStart: 0, bestLap: Infinity,
+          finished: false, finishTime: 0, position: 1,
+        };
+      }
+
+      const GRID_LANES = [-0.75, -0.25, 0.25, 0.75]; // 4-wide staggered grid, well clear of COLLISION_X
+
+      const AI_NAME_POOL = [
+        'Turbo Jax', 'Nitro Belle', 'Ziggy Blaze', 'Rusty Volt', 'Coco Dash',
+        'Max Skid', 'Vera Vroom', 'Dizzy Drift', 'Karl Krunch', 'Pixie Torque',
+        'Bruno Sparks', 'Lola Redline', 'Snap Gearz', 'Ruby Rumble', 'Otto Boost',
+        'Mimi Hazard', 'Duke Fender', 'Skye Racer', 'Gizmo Grit', 'Nova Slick',
+      ];
+      function pickAiNames(n) {
+        const pool = [...AI_NAME_POOL];
+        const picked = [];
+        for (let i = 0; i < n; i++) {
+          const idx = pool.length ? Math.floor(Math.random() * pool.length) : -1;
+          picked.push(idx >= 0 ? pool.splice(idx, 1)[0] : `CPU ${i + 1}`);
+        }
+        return picked;
+      }
+
+      function buildGrid(count) {
+        const list = [];
+        const aiNames = pickAiNames(TOTAL_KARTS - count);
+        let aiIndex = 0;
+        for (let i = 0; i < TOTAL_KARTS; i++) {
+          const isAI = i >= count;
+          const row = Math.floor(i / GRID_LANES.length), lane = i % GRID_LANES.length;
+          list.push(createCar({
+            id: i,
+            name: isAI ? aiNames[aiIndex++] : `P${i + 1}`,
+            color: PALETTE[i],
+            playerNum: isAI ? null : i + 1,
+            isAI,
+            startX: GRID_LANES[lane],
+            startZ: -track.segmentLength * (row + 1) * 1.6,
+          }));
+        }
+        return list;
+      }
+
+      function getCarByPlayerNum(n) { return cars.find((c) => c.playerNum === n); }
+
+      function tryBoost(car) {
+        if (phase !== 'racing' || car.finished || car.spinTimer > 0) return;
+        if (!car.boosting && car.boostCharge >= 30) {
+          car.boosting = true;
+          car.boostTimer = 1.0 + (car.boostCharge / 100) * 2.2; // was 0.4 + *1.1 — too short
+          car.boostCharge = 0;
+        }
+      }
+
+      function spinOut(car) {
+        if (car.shieldTimer > 0) return; // shield blocks bomb/side-hit spin-outs
+        car.spinTimer = 1.1;
+        car.speed *= 0.25;
+      }
+
+      // Instant, non-thrown: spins out anyone currently alongside the user
+      // (close in z, offset in x — not already overlapping) rather than
+      // aiming forward like the projectile items.
+      function useSideHit(car) {
+        for (const other of cars) {
+          if (other === car || other.finished || other.spinTimer > 0) continue;
+          const dz = Math.abs(other.totalDistance - car.totalDistance);
+          const dx = Math.abs(other.x - car.x);
+          if (dz < 150 && dx > 0.15 && dx < 0.9) spinOut(other);
+        }
+      }
+
+      // Triangle: cycle which held item is "selected" (armed) without using
+      // it — Square fires whichever one is currently selected.
+      function cycleSelectedItem(car) {
+        if (phase !== 'racing' || car.finished || car.items.length === 0) return;
+        car.selectedIndex = (car.selectedIndex + 1) % car.items.length;
+      }
+
+      function tryUseItem(car) {
+        if (phase !== 'racing' || car.finished || car.items.length === 0) return;
+        const idx = clamp(car.selectedIndex, 0, car.items.length - 1);
+        const kind = car.items.splice(idx, 1)[0];
+        car.selectedIndex = car.items.length ? Math.min(idx, car.items.length - 1) : 0;
+        if (kind === 'boost') {
+          car.boosting = true;
+          car.boostTimer = 2.2; // was 1.0 — too short
+        } else if (kind === 'side') {
+          useSideHit(car);
+        } else if (kind === 'shield') {
+          car.shieldTimer = 10.0; // blocks bomb/side-hit spin-outs, slow, and being swapped
+        } else {
+          // bomb / swap / slow: forward-thrown projectiles, same aiming as
+          // each other, differing only in what happens on hit. Speed bumped
+          // (was +7000) and the hit window below widened — at the old
+          // values, closing speed vs. hit radius meant a fast-closing
+          // projectile could tunnel past its target within a single frame,
+          // same class of bug as the earlier hole/collision tunneling fixes.
+          projectiles.push({ ownerId: car.id, x: car.x, z: car.totalDistance + 80, speed: car.speed + 11000, life: 6, hit: false, kind });
+        }
+      }
+
+      // Is `car` currently over any hazard in `list` (each {segmentIndex, x}),
+      // measured the same way item-box pickup proximity already is. Returns
+      // the matched hazard's absolute world-z (in the car's current lap),
+      // not just a boolean, so callers that need to escape a specific spot
+      // (see the hole-exit nudge below) know exactly where it is rather than
+      // guessing a fixed offset.
+      function findNearHazard(car, list, xRadius, zRadius) {
+        const lapZ = ((car.totalDistance % track.length) + track.length) % track.length;
+        const lapBase = car.totalDistance - lapZ;
+        for (const h of list) {
+          const hz = h.segmentIndex * track.segmentLength;
+          if (Math.abs(lapZ - hz) < zRadius && Math.abs(car.x - h.x) < xRadius) return lapBase + hz;
+        }
+        return null;
+      }
+      function nearHazard(car, list, xRadius, zRadius) {
+        return findNearHazard(car, list, xRadius, zRadius) !== null;
+      }
+
+      function updateCarPhysics(car, input, dt, now) {
+        if (car.finished) return;
+        if (car.holeTimer > 0) {
+          car.holeTimer = Math.max(0, car.holeTimer - dt);
+          // The car hasn't moved all stun — it's still sitting exactly on
+          // the hole. Without a nudge clear of the hole's trigger radius,
+          // the very next tick would just detect it's still there and fall
+          // in again forever. A flat "+200" nudge isn't reliable here: if
+          // the car fell in from deep on the *behind* side of the trigger
+          // radius, +200 can still land it inside the radius on the far
+          // side, re-triggering immediately (confirmed this happens).
+          // Nudge relative to the hole's actual position instead, so it's
+          // guaranteed clear regardless of which side it was entered from.
+          if (car.holeTimer === 0) {
+            car.totalDistance = Math.max(car.totalDistance + 20, (car.holeEscapeZ ?? car.totalDistance) + 60);
+          }
+          return;
+        }
+        let steer = clamp(input.steer, -1, 1);
+        let throttle = input.throttle, brake = input.brake;
+        if (car.spinTimer > 0) {
+          car.spinTimer = Math.max(0, car.spinTimer - dt);
+          steer = Math.sin(now * 0.02) * 0.6;
+          throttle = false; brake = false;
+        }
+        const segment = Track.segmentAt(track, car.totalDistance);
+        const speedPercent = car.speed / MAX_SPEED;
+        // A small steering floor even at (near-)zero speed so a stalled car
+        // can still turn itself back toward the road instead of being stuck
+        // facing a wall with no way to react.
+        const dx = dt * (2 * speedPercent + 0.22);
+        car.x += dx * steer;
+        car.x -= dx * speedPercent * segment.curve * CENTRIFUGAL;
+
+        const offroad = Math.abs(car.x) > 1;
+        const inGrease = nearHazard(car, track.greasePatches, 0.35, 140);
+        // Off-road is a real but escapable penalty: weaker accel and a much
+        // lower top speed, not a decel that can outrun full throttle — that
+        // combination made off-road speed clamp to exactly 0 forever.
+        if (throttle) car.speed += ACCEL * (offroad ? 0.45 : inGrease ? 0.6 : 1) * dt;
+        if (brake) car.speed -= BRAKE_DECEL * dt;
+        if (!throttle && !brake) car.speed -= ENGINE_DECEL * (offroad ? 0.5 : 1) * dt;
+
+        if (car.boosting) {
+          car.boostTimer -= dt;
+          if (car.boostTimer <= 0) car.boosting = false;
+        }
+        if (car.slowTimer > 0) car.slowTimer = Math.max(0, car.slowTimer - dt);
+        if (car.shieldTimer > 0) car.shieldTimer = Math.max(0, car.shieldTimer - dt);
+        // Threshold lowered from 0.45 and charge rate raised from 55 —
+        // drifting was hard to trigger and slow to pay off for players.
+        const drifting = Math.abs(steer) > 0.5 && !offroad && speedPercent > 0.32 && car.spinTimer <= 0;
+        car.boostCharge = clamp(car.boostCharge + (drifting ? dt * 68 : -dt * 8), 0, 100);
+
+        // Penalties (offroad, grease, the slow-item debuff) cap effective top
+        // speed even mid-boost — a boost shouldn't cancel out a hazard.
+        const cap = offroad ? OFFROAD_MAX_SPEED
+          : inGrease ? car.maxSpeed * 0.45
+          : car.slowTimer > 0 ? car.maxSpeed * 0.55
+          : (car.boosting ? car.maxSpeed * BOOST_MULTIPLIER : car.maxSpeed);
+        car.speed = clamp(car.speed, 0, cap);
+        car.x = clamp(car.x, -1.6, 1.6);
+
+        // Check boost pads/holes against the *pre-move* position, not the
+        // post-move one below — at highway speed a single frame can cover
+        // more ground than a post-move check's radius, so a fast car could
+        // sail past a hole without ever registering inside it (same class
+        // of single-frame-tunneling bug as the kart-vs-kart collision fix
+        // earlier this session).
+        if (car.boostPadCooldown > 0) {
+          car.boostPadCooldown = Math.max(0, car.boostPadCooldown - dt);
+        } else if (nearHazard(car, track.boostPads, 0.4, 130)) {
+          car.boosting = true;
+          car.boostTimer = 2.2; // was 1.0 — too short
+          car.boostPadCooldown = 1.5;
+        }
+        const holeZ = findNearHazard(car, track.holes, 0.35, 130);
+        if (holeZ !== null) {
+          car.holeTimer = 3.0;
+          car.speed = 0;
+          car.holeEscapeZ = holeZ + 130 + 70; // just past this specific hole's trigger radius
+        }
+
+        car.totalDistance += car.speed * dt;
+
+        const lapsNow = Math.max(0, Math.floor(car.totalDistance / track.length));
+        if (lapsNow > car.laps) {
+          if (car.lapStart) car.bestLap = Math.min(car.bestLap, now - car.lapStart);
+          car.lapStart = now;
+          car.laps = lapsNow;
+          if (car.laps >= TARGET_LAPS) {
+            car.finished = true;
+            car.finishTime = now - raceStartedAt;
+          }
+        }
+      }
+
+      function checkItemPickups(now) {
+        for (const box of itemBoxes) {
+          if (!box.active && now >= box.respawnAt) box.active = true;
+        }
+        for (const car of cars) {
+          if (car.finished || car.items.length >= ITEM_CAP) continue;
+          const lapZ = ((car.totalDistance % track.length) + track.length) % track.length;
+          for (const box of itemBoxes) {
+            if (!box.active) continue;
+            const boxZ = box.segmentIndex * track.segmentLength;
+            if (Math.abs(lapZ - boxZ) < 110 && Math.abs(car.x - box.x) < 0.4) {
+              car.items.push(ITEM_KINDS[Math.floor(Math.random() * ITEM_KINDS.length)]);
+              box.active = false;
+              box.respawnAt = now + 4000;
+              break; // one box per car per pass, even inside a 4-wide row
+            }
+          }
+        }
+      }
+
+      // Bomb/slow/swap projectiles always travel forward toward whoever's
+      // ahead of the thrower — which means, from the target's point of
+      // view, they approach from directly behind. The chase-cam only ever
+      // looks forward, so there's no way to actually see one coming in the
+      // 3D scene; this is a HUD-only warning so the player gets *some*
+      // signal before it hits (distance still gives a moment to swerve,
+      // since the hit check has an x-lane tolerance).
+      const THREAT_WARNING_RANGE = 2200;
+      function findIncomingThreat(car) {
+        let closest = null;
+        for (const p of projectiles) {
+          if (p.hit || p.ownerId === car.id) continue;
+          if (p.kind !== 'bomb' && p.kind !== 'slow' && p.kind !== 'swap') continue;
+          const behindDist = car.totalDistance - p.z; // positive = still behind car, closing in
+          if (behindDist > 0 && behindDist < THREAT_WARNING_RANGE && Math.abs(car.x - p.x) < 0.6) {
+            if (!closest || behindDist < closest.dist) closest = { kind: p.kind, dist: behindDist };
+          }
+        }
+        return closest;
+      }
+
+      function drawThreatWarning(left, top, w, h, threat) {
+        if (!threat) return;
+        const urgency = 1 - clamp(threat.dist / THREAT_WARNING_RANGE, 0, 1); // 0 far .. 1 about to hit
+        const pulse = 0.5 + 0.5 * Math.sin(performance.now() * (0.012 + urgency * 0.02));
+        const color = ITEM_COLORS[threat.kind] || '#ff3b3b';
+        const barH = 16 + urgency * 34;
+
+        ctx.save();
+        const grad = ctx.createLinearGradient(0, top + h - barH, 0, top + h);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, color);
+        ctx.globalAlpha = 0.3 + 0.5 * pulse * (0.4 + urgency * 0.6);
+        ctx.fillStyle = grad;
+        ctx.fillRect(left, top + h - barH, w, barH);
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = 0.55 + 0.45 * pulse;
+        ctx.fillStyle = '#fff';
+        ctx.font = `900 ${14 + urgency * 6}px "Baloo 2", Arial`;
+        ctx.textAlign = 'center';
+        const textY = top + h - barH - 12;
+        ctx.fillText('INCOMING', left + w / 2, textY);
+        // Small chevrons pointing down toward the bottom edge, where the
+        // threat is conceptually coming from (behind/off-screen).
+        const chevW = 9, chevH = 6;
+        for (const dx of [-46, 46]) {
+          ctx.beginPath();
+          ctx.moveTo(left + w / 2 + dx - chevW, textY - chevH - 2);
+          ctx.lineTo(left + w / 2 + dx, textY + 2);
+          ctx.lineTo(left + w / 2 + dx + chevW, textY - chevH - 2);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function updateProjectiles(dt) {
+        for (const p of projectiles) {
+          const prevZ = p.z;
+          p.z += p.speed * dt;
+          p.life -= dt;
+          if (p.hit) continue;
+          // Swept check, not a fixed radius around the post-move position —
+          // at close range + high closing speed, a single frame's movement
+          // can be larger than any reasonable fixed radius, so even a wide
+          // one still let some point-blank throws tunnel straight through
+          // (verified: throw at 12000, target at 2000, 200-unit gap still
+          // missed at a 200-unit radius). Checking whether the target's
+          // position fell anywhere within the projectile's before→after
+          // interval this frame is robust regardless of speed.
+          const zMin = Math.min(prevZ, p.z) - 60;
+          const zMax = Math.max(prevZ, p.z) + 60;
+          for (const car of cars) {
+            if (car.id === p.ownerId || car.finished || car.spinTimer > 0) continue;
+            if (car.totalDistance >= zMin && car.totalDistance <= zMax && Math.abs(car.x - p.x) < 0.4) {
+              if (p.kind === 'bomb') {
+                spinOut(car); // spinOut itself is shield-aware
+              } else if (p.kind === 'slow') {
+                if (car.shieldTimer <= 0) { car.slowTimer = 2.5; car.speed *= 0.6; }
+              } else if (p.kind === 'swap' && car.shieldTimer <= 0) {
+                const thrower = cars.find((c) => c.id === p.ownerId);
+                if (thrower) {
+                  const tz = thrower.totalDistance, tx = thrower.x;
+                  thrower.totalDistance = car.totalDistance; thrower.x = car.x;
+                  car.totalDistance = tz; car.x = tx;
+                }
+              }
+              // The projectile still "hits" (and is consumed) even when the
+              // shield blocks the effect — it bounces off rather than
+              // sailing through to hit whoever's behind the shielded car.
+              p.hit = true;
+              break;
+            }
+          }
+        }
+        projectiles = projectiles.filter((p) => p.life > 0 && !p.hit);
+      }
+
+      // Pairwise bumper-car resolution: two karts are "in the collision box"
+      // only when they're close on BOTH axes at once (narrow lane AND close
+      // following distance). When they are, both axes get corrected in the
+      // same pass — sideways to relieve a side-by-side squeeze, front-to-back
+      // to enforce a minimum following gap so a trailing kart can't phase
+      // through the one ahead. (Picking only *one* axis to resolve, based on
+      // comparing normalized overlap fractions, doesn't work here: the lane
+      // is narrow so lateral overlap always looks "severe" on that scale,
+      // starving out the longitudinal correction that actually matters for a
+      // rear-end — verified this the hard way before removing it.)
+      //
+      // `prevZ` is each car's totalDistance from *before* this frame's physics
+      // ran, snapshotted by the caller. At high closing speeds a fast car can
+      // fully overtake a slow one's position within a single frame — if the
+      // push direction were computed from the (now-flipped) current order,
+      // the correction would reinforce the tunnel-through instead of undoing
+      // it. Using the pre-frame order as the stable reference direction fixes
+      // that: the correction still points the right way even after a
+      // same-frame flip, and a bigger flip just produces a bigger push back
+      // toward a legal gap.
+      function resolveCollisions(prevZ) {
+        for (let i = 0; i < cars.length; i++) {
+          const a = cars[i];
+          if (a.finished) continue;
+          for (let j = i + 1; j < cars.length; j++) {
+            const b = cars[j];
+            if (b.finished) continue;
+            const dz = b.totalDistance - a.totalDistance;
+            const prevDz = prevZ[j] - prevZ[i];
+            const dirBase = prevDz !== 0 ? prevDz : (dz !== 0 ? dz : (Math.random() < 0.5 ? -1 : 1));
+            const dir = Math.sign(dirBase);
+            const signedGap = dz * dir; // >0: b still ahead of a along the stable direction; <0: order flipped this frame
+
+            const dx = b.x - a.x;
+            if (signedGap >= COLLISION_Z || Math.abs(dx) >= COLLISION_X) continue;
+
+            const zPush = (COLLISION_Z - signedGap) * 0.5;
+            a.totalDistance -= zPush * dir;
+            b.totalDistance += zPush * dir;
+            // Extra speed bleed for whichever kart is doing the ramming.
+            if (dir > 0) a.speed *= 0.9; else b.speed *= 0.9;
+
+            // Only push apart laterally when there's an actual lateral
+            // offset — a straight-behind kart (dx≈0) isn't a side-by-side
+            // squeeze, and nudging it apart anyway risks landing |dx| right
+            // on the COLLISION_X boundary, which would make next frame's
+            // quick-reject above think the pair stopped colliding entirely
+            // and silently disable the Z correction while the ram continues.
+            if (Math.abs(dx) > 0.01) {
+              const xPush = (COLLISION_X - Math.abs(dx)) * 0.5;
+              const xDir = Math.sign(dx);
+              a.x = clamp(a.x - xPush * xDir, -1.6, 1.6);
+              b.x = clamp(b.x + xPush * xDir, -1.6, 1.6);
+            }
+
+            a.speed *= 0.985;
+            b.speed *= 0.985;
+          }
+        }
+      }
+
+      function sortKey(car) { return car.finished ? Number.MAX_SAFE_INTEGER - car.finishTime : car.totalDistance; }
+      function updateRanking() {
+        const sorted = [...cars].sort((a, b) => sortKey(b) - sortKey(a));
+        sorted.forEach((car, i) => { car.position = i + 1; });
+      }
+
+      function tickRace(dt, now) {
+        const humans = cars.filter((c) => !c.isAI);
+        const prevZ = cars.map((c) => c.totalDistance);
+        for (const car of cars) {
+          if (car.isAI) {
+            AI.applyRubberband(car, humans, MAX_SPEED);
+            const input = AI.computeAIInput(car, track, cars);
+            if (input.wantBoost) tryBoost(car);
+            if (input.wantItem) tryUseItem(car);
+            updateCarPhysics(car, input, dt, now);
+          } else {
+            const c = controls[car.playerNum] || {};
+            const input = { steer: (c.left ? -1 : 0) + (c.right ? 1 : 0), throttle: !!c.up, brake: !!c.down };
+            updateCarPhysics(car, input, dt, now);
+          }
+        }
+        resolveCollisions(prevZ);
+        checkItemPickups(now);
+        updateProjectiles(dt);
+        updateRanking();
+        if (humans.length && humans.every((c) => c.finished)) finishRace();
+      }
+
+      function projectedZFor(viewerZ, segmentIndex) {
+        const lap = Math.floor(viewerZ / track.length);
+        let z = segmentIndex * track.segmentLength + lap * track.length;
+        if (z - viewerZ < -track.length / 2) z += track.length;
+        return z;
+      }
+
+      function buildSprites(viewerCar, viewportW) {
+        const sprites = [];
+        // The viewer's own kart is a fixed-size screen overlay (drawPlayerOverlay,
+        // ~viewportW*0.1), but another kart's billboard scale grows without
+        // bound as it approaches the camera (that's correct perspective math,
+        // but at point-blank range it dwarfs the fixed-size overlay and reads
+        // as broken rather than "close"). Cap it to stay visually consistent
+        // with your own kart's size even nose-to-tail.
+        const kartScaleCap = viewportW * 0.16;
+        for (const car of cars) {
+          if (car === viewerCar) continue;
+          sprites.push({ x: car.x, z: car.totalDistance, draw: (c, s) => drawKart(c, Math.min(s * 0.9, kartScaleCap), car) });
+        }
+        for (const box of itemBoxes) {
+          if (!box.active) continue;
+          sprites.push({ x: box.x, z: projectedZFor(viewerCar.totalDistance, box.segmentIndex), draw: (c, s) => drawItemBoxShape(c, s * 0.55) });
+        }
+        for (const p of projectiles) {
+          sprites.push({ x: p.x, z: p.z, draw: (c, s) => drawProjectileShape(c, s * 0.35, p.kind) });
+        }
+        for (const pad of track.boostPads) {
+          sprites.push({ x: pad.x, z: projectedZFor(viewerCar.totalDistance, pad.segmentIndex), draw: (c, s) => drawBoostPadShape(c, s * 0.7) });
+        }
+        for (const patch of track.greasePatches) {
+          sprites.push({ x: patch.x, z: projectedZFor(viewerCar.totalDistance, patch.segmentIndex), draw: (c, s) => drawGreasePatchShape(c, s * 0.7) });
+        }
+        for (const hole of track.holes) {
+          sprites.push({ x: hole.x, z: projectedZFor(viewerCar.totalDistance, hole.segmentIndex), draw: (c, s) => drawHoleShape(c, s * 0.7) });
+        }
+        // Scenery is authored densely (every ~10 segments, both sides) so
+        // it reads as a continuous tree line rather than sparse cutouts —
+        // skip anything outside the actual draw distance up front instead
+        // of building a sprite object (with its own closure) for every one
+        // of the few hundred authored entries every single frame.
+        const sceneryHorizon = Render.DRAW_DISTANCE * track.segmentLength;
+        for (const item of track.scenery) {
+          const z = projectedZFor(viewerCar.totalDistance, item.segmentIndex);
+          if (z < viewerCar.totalDistance || z - viewerCar.totalDistance > sceneryHorizon) continue;
+          sprites.push({ x: item.x, z, draw: (c, s) => drawSceneryShape(c, s * (item.kind === 'lamp' ? 0.55 : item.kind === 'rail' ? 0.6 : 1.05), item.kind) });
+        }
+        return sprites;
+      }
+
+      function drawPlayerOverlay(car, w, h) {
+        ctx.save();
+        ctx.translate(w / 2 + car.x * w * 0.16, h * 0.88);
+        ctx.translate(0, Math.sin(performance.now() * 0.02) * Math.min(3, car.speed / 4000));
+        drawKart(ctx, w * 0.1, car);
+        ctx.restore();
+      }
+
+      function renderViewport(car, left, top, w, h) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(left, top, w, h);
+        ctx.clip();
+        ctx.translate(left, top);
+        Render.renderScene(ctx, track, car, w, h, buildSprites(car, w));
+        drawPlayerOverlay(car, w, h);
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(255,255,255,.18)';
+        ctx.strokeRect(left, top, w, h);
+        Render.drawHudPanel(ctx, left, top, w, h, car, TARGET_LAPS);
+        if (car.shieldTimer <= 0) drawThreatWarning(left, top, w, h, findIncomingThreat(car));
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, W, H);
+        const humans = cars.filter((c) => !c.isAI);
+        if (humans.length <= 1) {
+          if (humans[0]) renderViewport(humans[0], 0, 0, W, H);
+        } else {
+          renderViewport(humans[0], 0, 0, W / 2, H);
+          renderViewport(humans[1], W / 2, 0, W / 2, H);
+        }
+        Render.drawMinimap(ctx, W - 210, 16, 190, 130, track, cars, new Set(humans.map((c) => c.id)));
+      }
+
+      function formatTime(ms) {
+        const total = Math.max(0, Math.floor(ms / 1000));
+        const min = String(Math.floor(total / 60)).padStart(2, '0');
+        const sec = String(total % 60).padStart(2, '0');
+        return `${min}:${sec}`;
+      }
+
+      function finishRace() {
+        if (phase === 'finished') return;
+        phase = 'finished';
+        const humansSet = new Set(cars.filter((c) => !c.isAI).map((c) => c.id));
+        const sorted = [...cars].sort((a, b) => sortKey(b) - sortKey(a));
+        const list = document.getElementById('podiumList');
+        list.innerHTML = '';
+        sorted.forEach((car, i) => {
+          const row = document.createElement('div');
+          row.className = 'podium-row' + (humansSet.has(car.id) ? ' me' : '');
+          row.innerHTML = `<span class="pos display-font">${Render.ordinal(i + 1)}</span><span class="swatch" style="background:${car.color}"></span><span class="name">${car.name}</span><span class="time">${car.finished ? formatTime(car.finishTime) : 'DNF'}</span>`;
+          list.appendChild(row);
+        });
+        document.getElementById('podiumTitle').textContent = `${sorted[0].name} WINS!`;
+        document.getElementById('podiumOverlay').style.display = 'flex';
+      }
+
+      function startCountdown(now) {
+        phase = 'countdown';
+        countdownStartedAt = now;
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('topBar').style.display = 'flex';
+        document.getElementById('topBarLabel').textContent = mode === 'ai' ? 'RACE VS CPU' : 'TWO PLAYER RACE';
+        document.getElementById('countdownOverlay').style.display = 'flex';
+        canvas.style.display = 'block';
+      }
+
+      function updateCountdown(now) {
+        const elapsed = now - countdownStartedAt;
+        const el = document.getElementById('countdownNum');
+        if (elapsed < 900) { el.textContent = '3'; el.className = 'display-font c-three'; }
+        else if (elapsed < 1800) { el.textContent = '2'; el.className = 'display-font c-two'; }
+        else if (elapsed < 2700) { el.textContent = '1'; el.className = 'display-font c-one'; }
+        else if (elapsed < 3400) { el.textContent = 'GO!'; el.className = 'display-font c-go'; }
+        else {
+          document.getElementById('countdownOverlay').style.display = 'none';
+          phase = 'racing';
+          raceStartedAt = now;
+          cars.forEach((c) => { c.lapStart = now; });
+        }
+      }
+
+      function frameTick() {
+        const now = performance.now();
+        const dt = Math.min(0.033, (now - lastFrame) / 1000 || 0.016);
+        lastFrame = now;
+        if (phase === 'countdown') updateCountdown(now);
+        else if (phase === 'racing' && !paused) tickRace(dt, now);
+        if (phase !== 'lobby') draw();
+        requestAnimationFrame(frameTick);
+      }
+
+      function startGame(selectedMode) {
+        mode = selectedMode;
+        humanCount = selectedMode === 'ai' ? 1 : 2;
+        track = Track.buildTrack(selectedTrackId); // must happen before buildGrid()/itemBoxes below
+        cars = buildGrid(humanCount);
+        itemBoxes = track.itemBoxSegments.map((b) => ({ segmentIndex: b.segmentIndex, x: b.x, active: true, respawnAt: 0 }));
+        projectiles = [];
+        controls[1] = { left: false, right: false, up: false, down: false };
+        controls[2] = { left: false, right: false, up: false, down: false };
+        paused = false;
+        document.getElementById('pauseOverlay').style.display = 'none';
+        document.getElementById('podiumOverlay').style.display = 'none';
+        updateRanking();
+        startCountdown(performance.now());
+        lastFrame = performance.now();
+        requestAnimationFrame(frameTick);
+      }
+
+      function togglePause() {
+        if (phase !== 'racing') return;
+        paused = !paused;
+        document.getElementById('pauseOverlay').style.display = paused ? 'flex' : 'none';
+      }
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'host-create', hostId: gameId, mode }));
+      };
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'room-created') {
+          gameId = msg.room;
+          localStorage.setItem('racingGameId', gameId);
+          gameParams.set('id', gameId);
+          history.replaceState(null, '', `${location.pathname}?${gameParams}`);
+          document.getElementById('roomCode').textContent = gameId;
+          const joinUrl = `${location.protocol}//${location.host}/controller.html?room=${gameId}`;
+          new QRCode(document.getElementById('qrcode'), { text: joinUrl, width: 150, height: 150 });
+        }
+        if (msg.type === 'player-joined') {
+          connectedPlayers.add(msg.playerNum);
+          syncLobby();
+        }
+        if (msg.type === 'player-left') {
+          connectedPlayers.delete(msg.playerNum);
+          syncLobby();
+        }
+        if (msg.type === 'input') {
+          const p = controls[msg.playerNum] || controls[1];
+          if (msg.action === 'left') p.left = msg.state === 'down';
+          if (msg.action === 'right') p.right = msg.state === 'down';
+          if (msg.action === 'up') p.up = msg.state === 'down';
+          if (msg.action === 'down') p.down = msg.state === 'down';
+          if (msg.action === 'start' && msg.state === 'down') togglePause();
+          if (msg.action === 'boost' && msg.state === 'down') { const c = getCarByPlayerNum(msg.playerNum); if (c) tryBoost(c); }
+          if (msg.action === 'item' && msg.state === 'down') { const c = getCarByPlayerNum(msg.playerNum); if (c) cycleSelectedItem(c); }
+          if (msg.action === 'useItem' && msg.state === 'down') { const c = getCarByPlayerNum(msg.playerNum); if (c) tryUseItem(c); }
+        }
+      };
+
+      function buildGridPreview() {
+        const el = document.getElementById('gridPreview');
+        el.innerHTML = '';
+        for (let i = 0; i < TOTAL_KARTS; i++) {
+          const slot = document.createElement('div');
+          const isHuman = i < 2;
+          slot.className = 'slot' + (isHuman ? ' human' : '');
+          slot.id = `slot${i}`;
+          slot.textContent = isHuman ? `P${i + 1}` : 'CPU';
+          slot.style.borderColor = PALETTE[i];
+          el.appendChild(slot);
+        }
+      }
+
+      function drawTrackThumb(canvas, polyline) {
+        const ctx2 = canvas.getContext('2d');
+        const w = canvas.width, h = canvas.height;
+        ctx2.clearRect(0, 0, w, h);
+        ctx2.strokeStyle = '#7fe8ff';
+        ctx2.lineWidth = 2;
+        ctx2.beginPath();
+        polyline.forEach((p, i) => {
+          const px = 4 + p.u * (w - 8), py = 4 + p.v * (h - 8);
+          if (i === 0) ctx2.moveTo(px, py); else ctx2.lineTo(px, py);
+        });
+        ctx2.closePath();
+        ctx2.stroke();
+      }
+
+      function buildTrackSelect() {
+        const el = document.getElementById('trackSelect');
+        el.innerHTML = '';
+        Track.LIST.forEach((t) => {
+          const card = document.createElement('div');
+          card.className = 'track-card' + (t.id === selectedTrackId ? ' selected' : '');
+          card.dataset.trackId = t.id;
+          const canvas = document.createElement('canvas');
+          canvas.className = 'thumb';
+          canvas.width = 148; canvas.height = 40;
+          card.innerHTML = `<div class="name display-font">${t.name}</div><div class="desc">${t.desc}</div>`;
+          card.appendChild(canvas);
+          drawTrackThumb(canvas, Track.buildTrack(t.id).polyline);
+          card.addEventListener('click', () => {
+            selectedTrackId = t.id;
+            el.querySelectorAll('.track-card').forEach((c) => c.classList.toggle('selected', c.dataset.trackId === t.id));
+          });
+          el.appendChild(card);
+        });
+      }
+      function syncLobby() {
+        document.getElementById('players').textContent = connectedPlayers.size
+          ? `${connectedPlayers.size} driver${connectedPlayers.size === 1 ? '' : 's'} connected`
+          : 'Waiting for driver...';
+        document.getElementById('twoBtn').disabled = connectedPlayers.size < 2;
+        document.getElementById('aiBtn').disabled = connectedPlayers.size < 1;
+        for (let i = 0; i < 2; i++) {
+          const slot = document.getElementById(`slot${i}`);
+          if (slot) slot.classList.toggle('joined', connectedPlayers.has(i + 1));
+        }
+      }
+
+      document.getElementById('twoBtn').addEventListener('click', () => startGame('two'));
+      document.getElementById('aiBtn').addEventListener('click', () => startGame('ai'));
+      document.getElementById('restartBtn').addEventListener('click', () => startGame(mode));
+      document.getElementById('fullscreenBtn').addEventListener('click', () => {
+        document.body.requestFullscreen?.().catch(() => {});
+      });
+      window.addEventListener('keydown', (e) => { if (e.key === 'Escape') togglePause(); });
+
+      buildGridPreview();
+      buildTrackSelect();
+      syncLobby();
+    </script>
+  </body>
+</html>

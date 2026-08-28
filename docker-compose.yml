@@ -16,3 +16,12 @@ services:
       - "127.0.0.1:3000:3000"
     environment:
       - PORT=3000
+
+  racing:
+    build: ./racing
+    container_name: wandr-racing
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3010:3010"
+    environment:
+      - PORT=3010
