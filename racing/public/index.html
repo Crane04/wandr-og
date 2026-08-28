@@ -16,24 +16,50 @@
         font-family: "Baloo 2", Arial, sans-serif;
         min-height: 100vh;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: center;
-        overflow: hidden;
+        overflow-y: auto;
+        overflow-x: hidden;
       }
       h1, .display-font { font-family: "Bangers", cursive; letter-spacing: 2px; }
-      #lobby { text-align: center; max-width: 560px; padding: 16px; }
+      /* The lobby has grown (track picker + condition picker rows) well past
+         a single screen on most viewports. Flex-centering an oversized child
+         under overflow:hidden clips both ends with no way to reach them —
+         scrolling the body (above) plus top/bottom padding here (instead of
+         vertical centering) is what actually makes all of it reachable. */
+      #lobby { text-align: center; max-width: 560px; width: 100%; padding: 32px 16px 130px; }
       #lobby h1 { font-size: 52px; color: #ffd23f; text-shadow: 0 0 18px rgba(255,178,0,.55), 3px 3px 0 #d1420c; margin-bottom: 6px; }
       #lobby p { color: #bcd0ff; }
       #roomCode { font-size: 44px; letter-spacing: 8px; color: #7fffa0; margin: 12px 0; font-family: "Bangers", cursive; text-shadow: 0 0 12px rgba(120,255,150,.6); }
       #qrcode { background: #fff; padding: 10px; display: inline-block; border-radius: 10px; }
-      .actions { margin-top: 16px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
       button { padding: 12px 24px; font-size: 16px; border: none; border-radius: 10px; font-family: "Baloo 2", sans-serif; font-weight: 800; cursor: pointer; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
       button:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,.35); }
       #twoBtn { background: linear-gradient(180deg,#ffe066,#ffb300); color: #402700; }
       #aiBtn { background: linear-gradient(180deg,#7dffb0,#12b866); color: #063017; }
-      #fullscreenBtn { margin-top: 12px; background: #1a2f66; color: #cfe1ff; border: 1px solid #5689e8; box-shadow: none; }
+      #timerBtn { background: linear-gradient(180deg,#ff9a5a,#e0561a); color: #3a1400; }
+      #fullscreenBtn { background: #1a2f66; color: #cfe1ff; border: 1px solid #5689e8; box-shadow: none; padding: 12px 16px; }
       button:disabled { opacity: .4; cursor: not-allowed; }
       #players { margin-top: 10px; color: #7fe8ff; font-weight: 700; }
+
+      /* Pinned to the bottom of the viewport instead of living at the end of
+         the scrolling lobby content — with a track picker and a conditions
+         picker between the top of the page and the Play buttons, "scroll
+         past everything to find Play" was the actual complaint. This keeps
+         the primary action reachable in one tap no matter how far down
+         someone has scrolled through the pickers. `#lobby` gets matching
+         bottom padding (below) so this bar never covers its last row. */
+      #playBar {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
+        display: flex; gap: 10px; align-items: center; justify-content: center;
+        padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+        background: linear-gradient(180deg, rgba(6,10,24,0), rgba(6,10,24,.85) 35%, #060a18 75%);
+      }
+
+      /* A short instruction line above each picker row — the cards alone
+         (especially the un-headed condition row) read as a features list,
+         not something to interact with. */
+      .section-label { margin-top: 20px; font-size: 13px; font-weight: 800; letter-spacing: .5px; color: #ffd23f; text-transform: uppercase; }
+      .section-label .hint { color: #8fa0c9; font-weight: 600; text-transform: none; letter-spacing: 0; }
 
       .grid-preview { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
       .slot { width: 42px; height: 30px; border-radius: 6px; background: #1c2338; border: 2px solid #3a4568; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #66708f; }
@@ -53,8 +79,11 @@
 
       canvas { display: none; position: fixed; inset: 0; width: 100vw; height: 100vh; background: #78c7ff; }
 
-      #topBar { display: none; position: fixed; top: 0; left: 0; right: 0; justify-content: center; padding: 8px; z-index: 3; pointer-events: none; }
+      #topBar { display: none; position: fixed; top: 0; left: 0; right: 0; justify-content: center; gap: 8px; padding: 8px; z-index: 3; pointer-events: none; }
       #topBar span { padding: 6px 16px; border-radius: 999px; background: rgba(10,10,20,.6); border: 1px solid rgba(255,255,255,.2); font-weight: 800; letter-spacing: 1px; font-size: 13px; }
+      #timerDisplay { display: none; font-variant-numeric: tabular-nums; }
+      #timerDisplay.urgent { color: #ff4a4a; border-color: rgba(255,74,74,.6); animation: timerPulse .6s infinite alternate; }
+      @keyframes timerPulse { from { opacity: 1; } to { opacity: .5; } }
 
       #countdownOverlay { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; z-index: 6; pointer-events: none; }
       #countdownNum { font-family: "Bangers", cursive; font-size: 160px; text-shadow: 0 0 30px rgba(0,0,0,.6), 0 0 60px currentColor; animation: pop .35s ease; }
@@ -84,16 +113,20 @@
       <div id="qrcode"></div>
       <div id="players">Waiting for driver...</div>
       <div id="gridPreview" class="grid-preview"></div>
+      <div class="section-label">1. Pick a track <span class="hint">— tap a card to choose</span></div>
       <div id="trackSelect" class="track-select"></div>
-      <div class="actions">
-        <button id="twoBtn" disabled>Two Players</button>
-        <button id="aiBtn" disabled>Play vs CPU</button>
-      </div>
-      <br />
+      <div class="section-label">2. Race conditions <span class="hint">— tap a card to choose</span></div>
+      <div id="conditionSelect" class="track-select"></div>
+    </div>
+
+    <div id="playBar">
+      <button id="twoBtn" disabled>Two Players</button>
+      <button id="aiBtn" disabled>Play vs CPU</button>
+      <button id="timerBtn" disabled>Time Attack</button>
       <button id="fullscreenBtn">Enter Fullscreen</button>
     </div>
 
-    <div id="topBar"><span id="topBarLabel">RACE</span></div>
+    <div id="topBar"><span id="topBarLabel">RACE</span><span id="timerDisplay">3:00</span></div>
     <canvas id="game" width="1280" height="720"></canvas>
     <div id="countdownOverlay"><div id="countdownNum" class="display-font">3</div></div>
     <div id="pauseOverlay"><h2>PAUSED</h2></div>
@@ -132,8 +165,8 @@
       const COLLISION_X = 0.24; // lateral radius (road units) at which two karts start touching
       const COLLISION_Z = 260;  // longitudinal radius (world units) — a minimum following gap
       const ITEM_CAP = 6;
-      const ITEM_KINDS = ['boost', 'bomb', 'side', 'swap', 'slow', 'shield'];
-      const ITEM_COLORS = { boost: '#ffd23f', bomb: '#ff5a5a', side: '#ff8a3d', swap: '#c77dff', slow: '#4dd2ff', shield: '#4dff9e' };
+      const ITEM_KINDS = ['boost', 'bomb', 'side', 'swap', 'slow', 'shield', 'banana', 'missile', 'star'];
+      const ITEM_COLORS = { boost: '#ffd23f', bomb: '#ff5a5a', side: '#ff8a3d', swap: '#c77dff', slow: '#4dd2ff', shield: '#4dff9e', banana: '#d9b429', missile: '#5271ff', star: '#ffe97a' };
       // Font Awesome 6 Free Solid glyphs: bolt, bomb, hand-fist, right-left, snowflake.
       const ITEM_ICON_GLYPHS = { boost: '', bomb: '', side: '', swap: '', slow: '' , shield: '' };
       let faReady = false;
@@ -144,6 +177,30 @@
       KartSprite.init('assets/car.jpeg', PALETTE);
 
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+      // Race conditions — orthogonal to which track layout is picked.
+      // gripMultiplier scales CENTRIFUGAL (higher = more corner slide, i.e.
+      // less grip); speedMultiplier scales the car's effective top speed;
+      // night/fogStart/visibleDistance feed straight into
+      // Render.renderScene — visibleDistance (fraction of the normal draw
+      // distance) is what actually shortens what gets drawn/culled; moving
+      // fogStart alone barely registered since distant segments are already
+      // tiny from perspective (see render.js's renderScene comment).
+      // Fog is deliberately paired with night rather than sold separately —
+      // blended against a bright clear-day sky it read as a weird pale haze
+      // rather than fog; blended against night's already-dark palette,
+      // things convincingly vanish into the dark a short way ahead.
+      const CONDITIONS = {
+        clear: { name: 'Clear Day', desc: 'Standard conditions — full grip, full visibility.', night: false, rain: false, fogStart: null, visibleDistance: 1, gripMultiplier: 1, speedMultiplier: 1 },
+        rain: { name: 'Rain', desc: 'Slick road — corners push you noticeably wider, top speed is down.', night: false, rain: true, fogStart: null, visibleDistance: 1, gripMultiplier: 2.0, speedMultiplier: 0.88 },
+        fog: { name: 'Foggy Night', desc: 'Dense fog after dark — you can only see a short way ahead.', night: true, rain: false, fogStart: 0, visibleDistance: 0.07, gripMultiplier: 1, speedMultiplier: 1 },
+        night: { name: 'Night', desc: 'Dark and clear — track lit only by lampposts, full visibility.', night: true, rain: false, fogStart: null, visibleDistance: 1, gripMultiplier: 1, speedMultiplier: 1 },
+      };
+      const CONDITION_LIST = Object.keys(CONDITIONS).map((id) => ({ id, name: CONDITIONS[id].name, desc: CONDITIONS[id].desc }));
+      const DEFAULT_CONDITION = 'clear';
+      const storedConditionId = localStorage.getItem('racingConditionId');
+      let selectedConditionId = CONDITIONS[storedConditionId] ? storedConditionId : DEFAULT_CONDITION;
+      let activeConditions = CONDITIONS[DEFAULT_CONDITION];
 
       const storedTrackId = localStorage.getItem('racingTrackId');
       let selectedTrackId = Track.LIST.some((t) => t.id === storedTrackId) ? storedTrackId : Track.DEFAULT_ID;
@@ -157,6 +214,21 @@
       let raceStartedAt = 0;
       let countdownStartedAt = 0;
       let lastFrame = 0;
+      // Time Attack: opponents are still on track (traffic/hazards), but the
+      // human's win condition is personal — finish all laps before this
+      // clock runs out, regardless of where AI opponents place. Pace
+      // constant calibrated by fast-forward-simulating a full AI race
+      // (tickRace called directly with a synthetic clock, bypassing real
+      // wall-clock wait) and measuring actual finish times across three
+      // track lengths: ~0.28ms of race time per world-unit of one lap's
+      // length was consistent across a straight-heavy oval, a technical
+      // circuit, and a hairpin-heavy track. The buffer on top of that AI
+      // baseline is what makes it a fair "drive well" challenge rather than
+      // requiring a flawless run.
+      const TIME_ATTACK_PACE_MS_PER_UNIT = 0.28;
+      const TIME_ATTACK_BUFFER = 1.25;
+      let timerModeActive = false;
+      let raceTimeLimitMs = 0;
 
       const controls = { 1: { left: false, right: false, up: false, down: false }, 2: { left: false, right: false, up: false, down: false } };
 
@@ -229,14 +301,25 @@
         c.restore();
       }
 
+      // 0 grounded .. 1 apex — a parabolic arc over a jump ramp's airTimer
+      // (which counts *down* from 1 at launch to 0 at landing), used to lift
+      // the kart body and shrink/fade its shadow so a jump actually reads
+      // as height rather than just "hazards can't touch you right now".
+      function jumpHeightFactor(car) {
+        return car.airTimer > 0 ? Math.sin((1 - car.airTimer) * Math.PI) : 0;
+      }
+
       // Rear 3/4 view of a low, wide car — the angle you see other racers
       // from in a chase-cam kart racer. `s` is the body half-width unit.
       function drawKartShape(c, s, car) {
         const w = s;
         const bodyH = s * 0.62;
+        const jumpT = jumpHeightFactor(car);
 
-        c.fillStyle = 'rgba(0,0,0,.4)';
-        c.beginPath(); c.ellipse(0, s * 0.08, w * 0.98, s * 0.15, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = `rgba(0,0,0,${0.4 * (1 - jumpT * 0.6)})`;
+        c.beginPath(); c.ellipse(0, s * 0.08, w * 0.98 * (1 - jumpT * 0.4), s * 0.15 * (1 - jumpT * 0.4), 0, 0, Math.PI * 2); c.fill();
+        c.save();
+        c.translate(0, -jumpT * s * 0.55);
 
         // Rear tires peeking past the body on each side.
         c.fillStyle = '#161616';
@@ -286,13 +369,17 @@
           drawNitroFlame(c, s, w * 0.45, hot);
           c.restore();
         }
+        c.restore(); // matches the jump-lift translate above
       }
 
       // Real photo asset, chroma-keyed + recolored per kart (see kart-sprite.js).
       // Falls back to the drawn shape above until it finishes loading.
       function drawKartSpriteImage(c, s, car, sprite) {
-        c.fillStyle = 'rgba(0,0,0,.4)';
-        c.beginPath(); c.ellipse(0, s * 0.08, s * 0.98, s * 0.15, 0, 0, Math.PI * 2); c.fill();
+        const jumpT = jumpHeightFactor(car);
+        c.fillStyle = `rgba(0,0,0,${0.4 * (1 - jumpT * 0.6)})`;
+        c.beginPath(); c.ellipse(0, s * 0.08, s * 0.98 * (1 - jumpT * 0.4), s * 0.15 * (1 - jumpT * 0.4), 0, 0, Math.PI * 2); c.fill();
+        c.save();
+        c.translate(0, -jumpT * s * 0.55);
         const w = s * 2.15;
         const h = w / sprite.aspect;
         c.drawImage(sprite.canvas, -w / 2, -h * 0.94, w, h);
@@ -304,6 +391,7 @@
           drawNitroFlame(c, s, s * 0.22, hot);
           c.restore();
         }
+        c.restore(); // matches the jump-lift translate above
       }
 
       // While in a hole: sink-then-pop over the 3s stun (fast sink, held
@@ -380,6 +468,43 @@
         c.restore();
       }
 
+      // Star: a rotating ring of colored sparkles plus a soft golden glow —
+      // deliberately busier/brighter than the shield bubble so "invincible
+      // and dangerous to touch" reads differently from "just blocking hits".
+      function drawStarAura(c, s, car) {
+        const t = performance.now();
+        const fadeOut = car.starTimer < 1.0 ? car.starTimer / 1.0 : 1; // flicker out in the last 1s
+        c.save();
+        c.globalAlpha = 0.5 * fadeOut;
+        const glow = c.createRadialGradient(0, -s * 0.5, 0, 0, -s * 0.5, s * 1.3);
+        glow.addColorStop(0, 'rgba(255,235,150,.6)');
+        glow.addColorStop(1, 'rgba(255,235,150,0)');
+        c.fillStyle = glow;
+        c.beginPath(); c.arc(0, -s * 0.5, s * 1.3, 0, Math.PI * 2); c.fill();
+        c.restore();
+
+        const sparkColors = ['#ff5a5a', '#ffd23f', '#4dff9e', '#4dd2ff', '#c77dff'];
+        const n = sparkColors.length;
+        for (let i = 0; i < n; i++) {
+          const ang = t * 0.003 + (i / n) * Math.PI * 2;
+          const r = s * 1.05;
+          const px = Math.cos(ang) * r;
+          const py = -s * 0.55 + Math.sin(ang) * r * 0.35;
+          const sz = s * 0.09;
+          c.save();
+          c.globalAlpha = fadeOut;
+          c.fillStyle = sparkColors[i];
+          c.beginPath();
+          c.moveTo(px, py - sz); c.lineTo(px + sz * 0.3, py - sz * 0.3);
+          c.lineTo(px + sz, py); c.lineTo(px + sz * 0.3, py + sz * 0.3);
+          c.lineTo(px, py + sz); c.lineTo(px - sz * 0.3, py + sz * 0.3);
+          c.lineTo(px - sz, py); c.lineTo(px - sz * 0.3, py - sz * 0.3);
+          c.closePath();
+          c.fill();
+          c.restore();
+        }
+      }
+
       function drawNameLabel(c, s, car) {
         if (s < 14) return; // too small/far to read
         c.save();
@@ -401,6 +526,7 @@
         if (sprite) drawKartSpriteImage(c, s, car, sprite);
         else drawKartShape(c, s, car);
         if (car.shieldTimer > 0) drawShieldBubble(c, s, car);
+        if (car.starTimer > 0) drawStarAura(c, s, car);
         drawItemRow(c, s, car);
         drawNameLabel(c, s, car);
       }
@@ -447,9 +573,48 @@
         c.beginPath(); c.ellipse(-s * 0.1, -s * 0.4, s * 0.1, s * 0.07, 0, 0, Math.PI * 2); c.fill();
       }
 
+      // Ground decal, dropped in place — flattened like the grease patch
+      // hazard below rather than a standing object.
+      function drawBananaShape(c, s) {
+        c.fillStyle = 'rgba(0,0,0,.25)';
+        c.beginPath(); c.ellipse(0, s * 0.08, s * 0.55, s * 0.16, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#e8d34a';
+        c.strokeStyle = '#8a6d1a';
+        c.lineWidth = Math.max(1, s * 0.04);
+        c.beginPath(); c.ellipse(-s * 0.22, 0, s * 0.42, s * 0.15, 0.5, 0, Math.PI * 2); c.fill(); c.stroke();
+        c.beginPath(); c.ellipse(s * 0.22, 0, s * 0.42, s * 0.15, -0.5, 0, Math.PI * 2); c.fill(); c.stroke();
+        c.fillStyle = '#5a4318';
+        c.beginPath(); c.ellipse(0, 0, s * 0.08, s * 0.08, 0, 0, Math.PI * 2); c.fill();
+      }
+
+      // Blue-tinted rocket with fins and a fading exhaust trail — visually
+      // distinct from the bomb/banana ground hazards since it's homing
+      // through the air toward a specific kart, not sitting on the road.
+      function drawMissileShape(c, s) {
+        const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.02);
+        const trail = c.createLinearGradient(0, -s * 0.1, 0, s * 0.9);
+        trail.addColorStop(0, 'rgba(140,190,255,.7)');
+        trail.addColorStop(1, 'rgba(140,190,255,0)');
+        c.fillStyle = trail;
+        c.beginPath(); c.moveTo(-s * 0.12, -s * 0.1); c.lineTo(s * 0.12, -s * 0.1); c.lineTo(0, s * 0.9); c.closePath(); c.fill();
+
+        c.fillStyle = '#dfe8ff';
+        roundRectPath(c, -s * 0.16, -s * 0.75, s * 0.32, s * 0.6, s * 0.14);
+        c.fill();
+        c.fillStyle = '#3a5fe0';
+        c.beginPath(); c.moveTo(-s * 0.16, -s * 0.75); c.lineTo(0, -s * 1.05); c.lineTo(s * 0.16, -s * 0.75); c.closePath(); c.fill();
+        c.beginPath(); c.moveTo(-s * 0.16, -s * 0.2); c.lineTo(-s * 0.34, -s * 0.02); c.lineTo(-s * 0.16, -s * 0.02); c.closePath(); c.fill();
+        c.beginPath(); c.moveTo(s * 0.16, -s * 0.2); c.lineTo(s * 0.34, -s * 0.02); c.lineTo(s * 0.16, -s * 0.02); c.closePath(); c.fill();
+
+        c.fillStyle = `rgba(150,200,255,${0.7 * pulse})`;
+        c.beginPath(); c.arc(0, -s * 0.9, s * 0.14, 0, Math.PI * 2); c.fill();
+      }
+
       function drawProjectileShape(c, s, kind) {
         if (kind === 'swap') drawSwapShape(c, s);
         else if (kind === 'slow') drawSlowShape(c, s);
+        else if (kind === 'banana') drawBananaShape(c, s);
+        else if (kind === 'missile') drawMissileShape(c, s);
         else drawBombShape(c, s);
       }
 
@@ -475,6 +640,58 @@
           c.lineTo(i * s * 0.3 + s * 0.15, s * 0.1);
           c.stroke();
         }
+      }
+
+      // A wedge ramp face-on with speed-line chevrons, distinct from the
+      // boost pad's flat glowing stripes — this one reads as a physical
+      // incline, not a surface effect.
+      function drawJumpRampShape(c, s) {
+        c.fillStyle = 'rgba(0,0,0,.3)';
+        c.beginPath(); c.ellipse(0, s * 0.14, s * 0.9, s * 0.2, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#d64545';
+        roundRectPath(c, -s * 0.85, -s * 0.05, s * 1.7, s * 0.35, s * 0.06);
+        c.fill();
+        c.fillStyle = '#f0f0f0';
+        for (let i = -2; i <= 2; i += 2) {
+          c.beginPath();
+          c.moveTo(i * s * 0.17 - s * 0.08, s * 0.3);
+          c.lineTo(i * s * 0.17, -s * 0.02);
+          c.lineTo(i * s * 0.17 + s * 0.08, s * 0.3);
+          c.closePath();
+          c.fill();
+        }
+        const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.01);
+        c.strokeStyle = `rgba(255,220,140,${0.6 * pulse})`;
+        c.lineWidth = Math.max(1, s * 0.045);
+        for (const yOff of [-0.55, -0.75]) {
+          c.beginPath();
+          c.moveTo(-s * 0.3, yOff * s * 0.5); c.lineTo(0, yOff * s * 0.5 - s * 0.12); c.lineTo(s * 0.3, yOff * s * 0.5);
+          c.stroke();
+        }
+      }
+
+      // Dashed arrow decal marking a shortcut cut — points off-road, away
+      // from `x`'s sign, so it visually matches whichever shoulder it's on.
+      function drawShortcutArrowShape(c, s, x) {
+        const dir = x > 0 ? 1 : -1;
+        const pulse = 0.55 + 0.45 * Math.sin(performance.now() * 0.006);
+        c.save();
+        c.scale(dir, 1);
+        c.strokeStyle = `rgba(120,255,170,${0.85 * pulse})`;
+        c.fillStyle = `rgba(120,255,170,${0.85 * pulse})`;
+        c.lineWidth = Math.max(1, s * 0.09);
+        c.lineCap = 'round';
+        for (const off of [0, 0.5, 1]) {
+          c.beginPath();
+          c.moveTo(-s * 0.7 + off * s * 0.6, s * 0.1);
+          c.lineTo(-s * 0.15 + off * s * 0.6, -s * 0.05);
+          c.stroke();
+        }
+        c.beginPath();
+        c.moveTo(s * 0.55, -s * 0.05); c.lineTo(s * 0.22, -s * 0.28); c.lineTo(s * 0.22, s * 0.18);
+        c.closePath();
+        c.fill();
+        c.restore();
       }
 
       function drawHoleShape(c, s) {
@@ -545,7 +762,8 @@
           x: opts.startX, totalDistance: opts.startZ,
           speed: 0, maxSpeed: MAX_SPEED,
           boostCharge: 0, boosting: false, boostTimer: 0, superBoostTimer: 0,
-          items: [], selectedIndex: 0, spinTimer: 0, slowTimer: 0, shieldTimer: 0, holeTimer: 0, holeEscapeZ: 0, boostPadCooldown: 0,
+          items: [], selectedIndex: 0, spinTimer: 0, slowTimer: 0, shieldTimer: 0, starTimer: 0, holeTimer: 0, holeEscapeZ: 0, boostPadCooldown: 0,
+          shortcutCooldown: 0, jumpCooldown: 0, airTimer: 0,
           laps: 0, lapStart: 0, bestLap: Infinity,
           finished: false, finishTime: 0, position: 1,
         };
@@ -609,8 +827,13 @@
         }
       }
 
+      // Shield and star both block incoming bomb/side/slow/swap effects —
+      // star additionally lets its holder spin out anyone *they* touch
+      // (see resolveCollisions), which shield does not.
+      function isProtected(car) { return car.shieldTimer > 0 || car.starTimer > 0; }
+
       function spinOut(car) {
-        if (car.shieldTimer > 0) return; // shield blocks bomb/side-hit spin-outs
+        if (isProtected(car)) return;
         car.spinTimer = 1.1;
         car.speed *= 0.25;
       }
@@ -645,6 +868,23 @@
           useSideHit(car);
         } else if (kind === 'shield') {
           car.shieldTimer = 10.0; // blocks bomb/side-hit spin-outs, slow, and being swapped
+        } else if (kind === 'star') {
+          car.starTimer = 6.0; // shield's protection, plus spins out anyone you touch
+        } else if (kind === 'banana') {
+          // Dropped in place, not thrown — a stationary hazard for whoever's
+          // chasing close behind. speed: 0 means updateProjectiles' own sweep
+          // can't catch a fast car running it over; that check also sweeps
+          // each car's own pre-move position for exactly this case.
+          projectiles.push({ ownerId: car.id, x: car.x, z: car.totalDistance - 90, speed: 0, life: 20, hit: false, kind });
+        } else if (kind === 'missile') {
+          // Locks onto whoever is 1st place *right now* and ignores everyone
+          // else in flight (see updateProjectiles) — a blue-shell-style
+          // pressure valve. Wasted (no target) if the thrower is already 1st.
+          const leader = cars.find((c) => c.position === 1);
+          projectiles.push({
+            ownerId: car.id, x: car.x, z: car.totalDistance + 80, speed: car.speed + 16000, life: 10, hit: false, kind,
+            targetId: leader && leader.id !== car.id ? leader.id : null,
+          });
         } else {
           // bomb / swap / slow: forward-thrown projectiles, same aiming as
           // each other, differing only in what happens on hit. Speed bumped
@@ -720,10 +960,18 @@
         // facing a wall with no way to react.
         const dx = dt * (2 * speedPercent + 0.22);
         car.x += dx * steer;
-        car.x -= dx * speedPercent * segment.curve * CENTRIFUGAL;
+        // gripMultiplier (from the selected race condition, e.g. Rain) scales
+        // how hard the road pushes back against a curve — higher means more
+        // slide, i.e. less grip.
+        car.x -= dx * speedPercent * segment.curve * CENTRIFUGAL * activeConditions.gripMultiplier;
 
-        const offroad = Math.abs(car.x) > 1;
-        const inGrease = nearHazard(car, track.greasePatches, 0.35, dt);
+        // While airborne off a jump ramp, off-road/grease/holes can't touch
+        // you — captured *before* this frame's airTimer decay below, so a
+        // ramp hit this frame doesn't retroactively grant immunity for the
+        // frame it was triggered on.
+        const airborne = car.airTimer > 0;
+        const offroad = !airborne && Math.abs(car.x) > 1;
+        const inGrease = !airborne && nearHazard(car, track.greasePatches, 0.35, dt);
         // Off-road is a real but escapable penalty: weaker accel and a much
         // lower top speed, not a decel that can outrun full throttle — that
         // combination made off-road speed clamp to exactly 0 forever.
@@ -738,6 +986,11 @@
         if (car.superBoostTimer > 0) car.superBoostTimer = Math.max(0, car.superBoostTimer - dt);
         if (car.slowTimer > 0) car.slowTimer = Math.max(0, car.slowTimer - dt);
         if (car.shieldTimer > 0) car.shieldTimer = Math.max(0, car.shieldTimer - dt);
+        if (car.starTimer > 0) car.starTimer = Math.max(0, car.starTimer - dt);
+        if (car.airTimer > 0) {
+          car.airTimer = Math.max(0, car.airTimer - dt);
+          if (car.airTimer === 0) triggerBoost(car, 1.2); // landing boost — the reward for timing a jump
+        }
         // Threshold lowered from 0.45 and charge rate raised from 55 —
         // drifting was hard to trigger and slow to pay off for players.
         const drifting = Math.abs(steer) > 0.5 && !offroad && speedPercent > 0.32 && car.spinTimer <= 0;
@@ -749,8 +1002,34 @@
           : inGrease ? car.maxSpeed * 0.45
           : car.slowTimer > 0 ? car.maxSpeed * 0.55
           : (car.boosting ? car.maxSpeed * BOOST_MULTIPLIER : car.maxSpeed);
-        car.speed = clamp(car.speed, 0, cap);
+        car.speed = clamp(car.speed, 0, cap * activeConditions.speedMultiplier);
         car.x = clamp(car.x, -1.6, 1.6);
+
+        if (car.jumpCooldown > 0) {
+          car.jumpCooldown = Math.max(0, car.jumpCooldown - dt);
+        } else if (nearHazard(car, track.jumpRamps, 0.4, dt)) {
+          car.airTimer = 1.0;
+          car.jumpCooldown = 1.6;
+        }
+        // Cutting a corner deep off-road (past the shoulder, matching side)
+        // flings the car `skip` world units further down the track — net
+        // time saved despite the off-road speed penalty on the way there.
+        // No swept/tunneling guard needed here unlike the hazards above:
+        // missing the trigger just means no shortcut that pass, not a
+        // fairness bug like tunneling through a punishing hazard would be.
+        if (car.shortcutCooldown > 0) {
+          car.shortcutCooldown = Math.max(0, car.shortcutCooldown - dt);
+        } else if (Math.abs(car.x) > 1.15) {
+          const lapZ = ((car.totalDistance % track.length) + track.length) % track.length;
+          for (const sc of track.shortcuts) {
+            const scZ = sc.segmentIndex * track.segmentLength;
+            if (Math.abs(lapZ - scZ) < 150 && Math.sign(car.x) === Math.sign(sc.x)) {
+              car.totalDistance += sc.skip;
+              car.shortcutCooldown = 4.0;
+              break;
+            }
+          }
+        }
 
         // Check boost pads/holes against the *pre-move* position, not the
         // post-move one below, and sweep the frame's actual travel distance
@@ -765,7 +1044,7 @@
           triggerBoost(car, 2.2); // was 1.0 — too short
           car.boostPadCooldown = 1.5;
         }
-        const holeZ = findNearHazard(car, track.holes, 0.35, dt);
+        const holeZ = airborne ? null : findNearHazard(car, track.holes, 0.35, dt);
         if (holeZ !== null) {
           car.holeTimer = 3.0;
           car.speed = 0;
@@ -786,6 +1065,33 @@
         }
       }
 
+      // Item boxes don't hand out a uniform random item — how far back you
+      // are shifts the odds, same rubber-band logic as Mario Kart: leaders
+      // mostly get utility (boost/shield), trailing racers get a real shot
+      // at the offensive stuff (missile only exists for the back half —
+      // it's wasted on whoever's already 1st).
+      function pickWeightedItem(car) {
+        const rank = TOTAL_KARTS > 1 ? (car.position - 1) / (TOTAL_KARTS - 1) : 0; // 0 = leader, 1 = last
+        const weights = {
+          boost: 3 - 2 * rank,
+          shield: 2 - rank,
+          banana: 1,
+          side: 1 + rank,
+          swap: 1,
+          slow: 1 + rank,
+          star: 0.3 + 1.2 * rank,
+          missile: rank < 0.5 ? 0 : (rank - 0.5) * 4,
+        };
+        let total = 0;
+        for (const k of ITEM_KINDS) total += Math.max(0, weights[k] ?? 1);
+        let r = Math.random() * total;
+        for (const k of ITEM_KINDS) {
+          r -= Math.max(0, weights[k] ?? 1);
+          if (r <= 0) return k;
+        }
+        return ITEM_KINDS[ITEM_KINDS.length - 1];
+      }
+
       function checkItemPickups(now) {
         for (const box of itemBoxes) {
           if (!box.active && now >= box.respawnAt) box.active = true;
@@ -797,7 +1103,7 @@
             if (!box.active) continue;
             const boxZ = box.segmentIndex * track.segmentLength;
             if (Math.abs(lapZ - boxZ) < 110 && Math.abs(car.x - box.x) < 0.4) {
-              car.items.push(ITEM_KINDS[Math.floor(Math.random() * ITEM_KINDS.length)]);
+              car.items.push(pickWeightedItem(car));
               box.active = false;
               box.respawnAt = now + 4000;
               break; // one box per car per pass, even inside a 4-wide row
@@ -818,7 +1124,8 @@
         let closest = null;
         for (const p of projectiles) {
           if (p.hit || p.ownerId === car.id) continue;
-          if (p.kind !== 'bomb' && p.kind !== 'slow' && p.kind !== 'swap') continue;
+          if (p.kind !== 'bomb' && p.kind !== 'slow' && p.kind !== 'swap' && p.kind !== 'missile') continue;
+          if (p.kind === 'missile' && p.targetId !== car.id) continue; // locked on — only its target gets the warning
           const behindDist = car.totalDistance - p.z; // positive = still behind car, closing in
           if (behindDist > 0 && behindDist < THREAT_WARNING_RANGE && Math.abs(car.x - p.x) < 0.6) {
             if (!closest || behindDist < closest.dist) closest = { kind: p.kind, dist: behindDist };
@@ -867,30 +1174,51 @@
         ctx.restore();
       }
 
-      function updateProjectiles(dt) {
+      // `prevZ` is each car's totalDistance from before this frame's physics
+      // ran (same snapshot resolveCollisions uses), indexed by car.id — cars
+      // are created with id === their array index, so prevZ[car.id] works.
+      function updateProjectiles(dt, prevZ) {
         for (const p of projectiles) {
-          const prevZ = p.z;
+          const prevPz = p.z;
+          if (p.kind === 'missile' && p.targetId != null) {
+            const target = cars.find((c) => c.id === p.targetId);
+            if (target && !target.finished) {
+              // Steers its x toward the target's lane at a bounded turn
+              // rate rather than snapping straight to it — a visible curve
+              // into the target's line, not a teleport.
+              p.x = clamp(p.x + clamp(target.x - p.x, -1, 1) * dt * 3, -1.6, 1.6);
+            }
+          }
           p.z += p.speed * dt;
           p.life -= dt;
           if (p.hit) continue;
-          // Swept check, not a fixed radius around the post-move position —
-          // at close range + high closing speed, a single frame's movement
-          // can be larger than any reasonable fixed radius, so even a wide
-          // one still let some point-blank throws tunnel straight through
-          // (verified: throw at 12000, target at 2000, 200-unit gap still
-          // missed at a 200-unit radius). Checking whether the target's
-          // position fell anywhere within the projectile's before→after
-          // interval this frame is robust regardless of speed.
-          const zMin = Math.min(prevZ, p.z) - 60;
-          const zMax = Math.max(prevZ, p.z) + 60;
+          // Swept check against BOTH the projectile's and each car's own
+          // before→after movement this frame, not a fixed radius around the
+          // post-move position — at close range + high closing speed, a
+          // single frame's movement can be larger than any reasonable fixed
+          // radius (verified: throw at 12000, target at 2000, 200-unit gap
+          // still missed at a 200-unit radius). Sweeping only the
+          // projectile's motion isn't enough either: a *stationary* banana
+          // (speed 0) has almost no swept band of its own, so a fast car
+          // could tunnel straight through it without sweeping the car's own
+          // motion too.
+          const zMin = Math.min(prevPz, p.z) - 60;
+          const zMax = Math.max(prevPz, p.z) + 60;
           for (const car of cars) {
             if (car.id === p.ownerId || car.finished || car.spinTimer > 0) continue;
-            if (car.totalDistance >= zMin && car.totalDistance <= zMax && Math.abs(car.x - p.x) < 0.4) {
-              if (p.kind === 'bomb') {
-                spinOut(car); // spinOut itself is shield-aware
+            // Blue-shell style: a locked-on missile ignores every other kart
+            // in flight, even ones it visually passes through.
+            if (p.kind === 'missile' && p.targetId != null && car.id !== p.targetId) continue;
+            const carPrevZ = prevZ ? prevZ[car.id] : car.totalDistance;
+            const carMin = Math.min(carPrevZ, car.totalDistance);
+            const carMax = Math.max(carPrevZ, car.totalDistance);
+            const overlaps = carMax >= zMin && carMin <= zMax;
+            if (overlaps && Math.abs(car.x - p.x) < 0.4) {
+              if (p.kind === 'bomb' || p.kind === 'banana' || p.kind === 'missile') {
+                spinOut(car); // spinOut itself is shield/star-aware
               } else if (p.kind === 'slow') {
-                if (car.shieldTimer <= 0) { car.slowTimer = 2.5; car.speed *= 0.6; }
-              } else if (p.kind === 'swap' && car.shieldTimer <= 0) {
+                if (!isProtected(car)) { car.slowTimer = 2.5; car.speed *= 0.6; }
+              } else if (p.kind === 'swap' && !isProtected(car)) {
                 const thrower = cars.find((c) => c.id === p.ownerId);
                 if (thrower) {
                   const tz = thrower.totalDistance, tx = thrower.x;
@@ -898,9 +1226,9 @@
                   car.totalDistance = tz; car.x = tx;
                 }
               }
-              // The projectile still "hits" (and is consumed) even when the
-              // shield blocks the effect — it bounces off rather than
-              // sailing through to hit whoever's behind the shielded car.
+              // The projectile still "hits" (and is consumed) even when
+              // shield/star blocks the effect — it bounces off rather than
+              // sailing through to hit whoever's behind the protected car.
               p.hit = true;
               break;
             }
@@ -951,6 +1279,12 @@
             // Extra speed bleed for whichever kart is doing the ramming.
             if (dir > 0) a.speed *= 0.9; else b.speed *= 0.9;
 
+            // Star: touching another kart spins them out (shield only
+            // blocks incoming effects, it doesn't do this) — skip when both
+            // are starred so they don't just spin each other every frame.
+            if (a.starTimer > 0 && !(b.starTimer > 0)) spinOut(b);
+            else if (b.starTimer > 0 && !(a.starTimer > 0)) spinOut(a);
+
             // Only push apart laterally when there's an actual lateral
             // offset — a straight-behind kart (dx≈0) isn't a side-by-side
             // squeeze, and nudging it apart anyway risks landing |dx| right
@@ -982,7 +1316,7 @@
         for (const car of cars) {
           if (car.isAI) {
             AI.applyRubberband(car, humans, MAX_SPEED);
-            const input = AI.computeAIInput(car, track, cars);
+            const input = AI.computeAIInput(car, track, cars, activeConditions);
             if (input.wantBoost) tryBoost(car);
             if (input.wantItem) tryUseItem(car);
             updateCarPhysics(car, input, dt, now);
@@ -994,9 +1328,12 @@
         }
         resolveCollisions(prevZ);
         checkItemPickups(now);
-        updateProjectiles(dt);
+        updateProjectiles(dt, prevZ);
         updateRanking();
+        // Finishing takes priority over the clock — a human who crosses the
+        // line the same frame the timer would've expired still made it.
         if (humans.length && humans.every((c) => c.finished)) finishRace();
+        else if (timerModeActive && now - raceStartedAt >= raceTimeLimitMs) failRace();
       }
 
       function projectedZFor(viewerZ, segmentIndex) {
@@ -1035,6 +1372,12 @@
         for (const hole of track.holes) {
           sprites.push({ x: hole.x, z: projectedZFor(viewerCar.totalDistance, hole.segmentIndex), draw: (c, s) => drawHoleShape(c, s * 0.7) });
         }
+        for (const ramp of track.jumpRamps) {
+          sprites.push({ x: ramp.x, z: projectedZFor(viewerCar.totalDistance, ramp.segmentIndex), draw: (c, s) => drawJumpRampShape(c, s * 0.7) });
+        }
+        for (const sc of track.shortcuts) {
+          sprites.push({ x: sc.x, z: projectedZFor(viewerCar.totalDistance, sc.segmentIndex), draw: (c, s) => drawShortcutArrowShape(c, s * 0.6, sc.x) });
+        }
         // Scenery is authored densely (every ~10 segments, both sides) so
         // it reads as a continuous tree line rather than sparse cutouts —
         // skip anything outside the actual draw distance up front instead
@@ -1057,19 +1400,46 @@
         ctx.restore();
       }
 
+      // Streaking rain lines over the viewport — the grip penalty alone
+      // (a bigger CENTRIFUGAL multiplier) is invisible until a car actually
+      // hits a curve, so a player has no way to tell rain is even active
+      // without this. Index-seeded rather than Math.random() per streak so
+      // each one falls at a consistent x/speed/length instead of jittering.
+      function drawRainOverlay(w, h) {
+        const t = performance.now();
+        ctx.save();
+        ctx.strokeStyle = 'rgba(210,225,255,.4)';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        const cols = 46;
+        for (let i = 0; i < cols; i++) {
+          const seed = i * 971;
+          const speed = 900 + (seed % 400);
+          const len = 22 + (seed % 18);
+          const x = (seed % w) + Math.sin(t * 0.0003 + i) * 6;
+          const y = ((t * speed / 1000) + (seed % h)) % (h + len) - len;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x - 4, y + len);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
       function renderViewport(car, left, top, w, h) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(left, top, w, h);
         ctx.clip();
         ctx.translate(left, top);
-        Render.renderScene(ctx, track, car, w, h, buildSprites(car, w));
+        Render.renderScene(ctx, track, car, w, h, buildSprites(car, w), activeConditions);
         drawPlayerOverlay(car, w, h);
+        if (activeConditions.rain) drawRainOverlay(w, h);
         ctx.restore();
         ctx.strokeStyle = 'rgba(255,255,255,.18)';
         ctx.strokeRect(left, top, w, h);
         Render.drawHudPanel(ctx, left, top, w, h, car, TARGET_LAPS);
-        if (car.shieldTimer <= 0) drawThreatWarning(left, top, w, h, findIncomingThreat(car));
+        if (!isProtected(car)) drawThreatWarning(left, top, w, h, findIncomingThreat(car));
       }
 
       function draw() {
@@ -1091,7 +1461,10 @@
         return `${min}:${sec}`;
       }
 
-      function finishRace() {
+      // Shared by both race-end paths (someone finished / the clock ran out
+      // in Time Attack) — renders the same standings list either way,
+      // just with a different headline.
+      function endRace(title) {
         if (phase === 'finished') return;
         phase = 'finished';
         const humansSet = new Set(cars.filter((c) => !c.isAI).map((c) => c.id));
@@ -1104,16 +1477,30 @@
           row.innerHTML = `<span class="pos display-font">${Render.ordinal(i + 1)}</span><span class="swatch" style="background:${car.color}"></span><span class="name">${car.name}</span><span class="time">${car.finished ? formatTime(car.finishTime) : 'DNF'}</span>`;
           list.appendChild(row);
         });
-        document.getElementById('podiumTitle').textContent = `${sorted[0].name} WINS!`;
+        document.getElementById('podiumTitle').textContent = title ?? `${sorted[0].name} WINS!`;
         document.getElementById('podiumOverlay').style.display = 'flex';
+      }
+
+      function finishRace() {
+        // In Time Attack the win condition is personal (beat the clock),
+        // not "beat the other racers" — an AI opponent finishing first is
+        // still a win for the human as long as they made it too.
+        const title = timerModeActive ? 'YOU MADE IT!' : undefined;
+        endRace(title);
+      }
+
+      function failRace() {
+        endRace("TIME'S UP!");
       }
 
       function startCountdown(now) {
         phase = 'countdown';
         countdownStartedAt = now;
         document.getElementById('lobby').style.display = 'none';
+        document.getElementById('playBar').style.display = 'none';
         document.getElementById('topBar').style.display = 'flex';
-        document.getElementById('topBarLabel').textContent = mode === 'ai' ? 'RACE VS CPU' : 'TWO PLAYER RACE';
+        document.getElementById('topBarLabel').textContent = mode === 'timer' ? 'TIME ATTACK' : mode === 'ai' ? 'RACE VS CPU' : 'TWO PLAYER RACE';
+        document.getElementById('timerDisplay').style.display = timerModeActive ? 'inline-block' : 'none';
         document.getElementById('countdownOverlay').style.display = 'flex';
         canvas.style.display = 'block';
       }
@@ -1133,20 +1520,31 @@
         }
       }
 
+      function updateTimerDisplay(now) {
+        if (!timerModeActive) return;
+        const remainingMs = Math.max(0, raceTimeLimitMs - (now - raceStartedAt));
+        const el = document.getElementById('timerDisplay');
+        el.textContent = formatTime(remainingMs);
+        el.classList.toggle('urgent', remainingMs < 10000);
+      }
+
       function frameTick() {
         const now = performance.now();
         const dt = Math.min(0.033, (now - lastFrame) / 1000 || 0.016);
         lastFrame = now;
         if (phase === 'countdown') updateCountdown(now);
-        else if (phase === 'racing' && !paused) tickRace(dt, now);
+        else if (phase === 'racing' && !paused) { tickRace(dt, now); updateTimerDisplay(now); }
         if (phase !== 'lobby') draw();
         requestAnimationFrame(frameTick);
       }
 
       function startGame(selectedMode) {
         mode = selectedMode;
-        humanCount = selectedMode === 'ai' ? 1 : 2;
+        humanCount = selectedMode === 'two' ? 2 : 1; // 'ai' and 'timer' both play one human vs a full AI grid
+        timerModeActive = selectedMode === 'timer';
+        activeConditions = CONDITIONS[selectedConditionId] || CONDITIONS[DEFAULT_CONDITION];
         track = Track.buildTrack(selectedTrackId); // must happen before buildGrid()/itemBoxes below
+        raceTimeLimitMs = Math.round(track.length * TIME_ATTACK_PACE_MS_PER_UNIT * TIME_ATTACK_BUFFER);
         cars = buildGrid(humanCount);
         itemBoxes = track.itemBoxSegments.map((b) => ({ segmentIndex: b.segmentIndex, x: b.x, active: true, respawnAt: 0 }));
         projectiles = [];
@@ -1258,12 +1656,29 @@
           el.appendChild(card);
         });
       }
+      function buildConditionSelect() {
+        const el = document.getElementById('conditionSelect');
+        el.innerHTML = '';
+        CONDITION_LIST.forEach((cnd) => {
+          const card = document.createElement('div');
+          card.className = 'track-card' + (cnd.id === selectedConditionId ? ' selected' : '');
+          card.dataset.conditionId = cnd.id;
+          card.innerHTML = `<div class="name display-font">${cnd.name}</div><div class="desc">${cnd.desc}</div>`;
+          card.addEventListener('click', () => {
+            selectedConditionId = cnd.id;
+            localStorage.setItem('racingConditionId', selectedConditionId);
+            el.querySelectorAll('.track-card').forEach((c) => c.classList.toggle('selected', c.dataset.conditionId === cnd.id));
+          });
+          el.appendChild(card);
+        });
+      }
       function syncLobby() {
         document.getElementById('players').textContent = connectedPlayers.size
           ? `${connectedPlayers.size} driver${connectedPlayers.size === 1 ? '' : 's'} connected`
           : 'Waiting for driver...';
         document.getElementById('twoBtn').disabled = connectedPlayers.size < 2;
         document.getElementById('aiBtn').disabled = connectedPlayers.size < 1;
+        document.getElementById('timerBtn').disabled = connectedPlayers.size < 1;
         for (let i = 0; i < 2; i++) {
           const slot = document.getElementById(`slot${i}`);
           if (slot) slot.classList.toggle('joined', connectedPlayers.has(i + 1));
@@ -1272,6 +1687,7 @@
 
       document.getElementById('twoBtn').addEventListener('click', () => startGame('two'));
       document.getElementById('aiBtn').addEventListener('click', () => startGame('ai'));
+      document.getElementById('timerBtn').addEventListener('click', () => startGame('timer'));
       document.getElementById('restartBtn').addEventListener('click', () => startGame(mode));
       document.getElementById('fullscreenBtn').addEventListener('click', () => {
         document.body.requestFullscreen?.().catch(() => {});
@@ -1280,6 +1696,7 @@
 
       buildGridPreview();
       buildTrackSelect();
+      buildConditionSelect();
       syncLobby();
     </script>
   </body>

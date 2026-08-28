@@ -247,6 +247,19 @@
     const greasePatches = [at(0.28, -0.3), at(0.85, 0.3)];
     const holes = [at(0.45, 0.5), at(0.72, -0.5)];
 
+    // Cut a corner deep off-road (past the shoulder, same side as `x`'s
+    // sign) and get flung `skip` world units further down the track — a
+    // net time save, but only if the off-road speed penalty over that
+    // stretch doesn't eat it alive. Placed away from every hazard/pad
+    // fraction above so nothing stacks visually on the same stretch.
+    const shortcuts = [at(0.2, 1.35), at(0.65, -1.35)].map((s, i) => ({ ...s, skip: 500 + i * 150 }));
+
+    // Launch airborne briefly on contact — while airborne the car sails
+    // over grease/holes/off-road penalties (see updateCarPhysics) and gets
+    // a small landing boost, so timing a jump over a hazard is a real
+    // reward, not just a visual flourish.
+    const jumpRamps = [at(0.38, 0), at(0.9, 0)];
+
     // Roadside dressing — trees mostly, a lamppost every so often, and a
     // guardrail hugging tight bends where a real track would need one.
     // Every SCENERY_SPACING segments, both sides get an object; `kind`
@@ -272,6 +285,8 @@
       boostPads,
       greasePatches,
       holes,
+      shortcuts,
+      jumpRamps,
       scenery,
       startSegment: 0,
     };

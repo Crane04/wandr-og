@@ -15,6 +15,14 @@
     light: { road: '#6d7178', grass: '#3ea44b', rumble: '#d64545', lane: '#f0f0f0' },
     dark: { road: '#5f636a', grass: '#2f8a3c', rumble: '#f0f0f0', lane: '#5f636a' },
   };
+  // Night variant for the "Night" condition — darker/cooler across the
+  // board so lamppost glow (already in the scenery set) actually reads as
+  // light sources instead of a redundant detail.
+  const COLORS_NIGHT = {
+    sky1: '#0a1030', sky2: '#1c2a52',
+    light: { road: '#2b2e3a', grass: '#123018', rumble: '#8a2a2a', lane: '#8890a8' },
+    dark: { road: '#25272f', grass: '#0e2814', rumble: '#8890a8', lane: '#2b2e3a' },
+  };
 
   function lerp(a, b, t) { return a + (b - a) * t; }
   function mixColor(hex1, hex2, t) {
@@ -53,19 +61,43 @@
     };
   }
 
-  function drawBackground(ctx, width, height, camera) {
+  function drawBackground(ctx, width, height, camera, active, night) {
     const horizon = height / 2;
     const sky = ctx.createLinearGradient(0, 0, 0, horizon);
-    sky.addColorStop(0, COLORS.sky1);
-    sky.addColorStop(1, COLORS.sky2);
+    sky.addColorStop(0, active.sky1);
+    sky.addColorStop(1, active.sky2);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, width, horizon);
+    // Ground-level backdrop for the bottom half — the road/grass trapezoids
+    // drawn later narrow sharply near the horizon and don't reach the full
+    // canvas width there, so without this the canvas element's own (fixed,
+    // day-blue) CSS background shows through the gap. That's invisible in
+    // daylight since the two colors happen to be close, but at night it
+    // left a bright sky-blue band down both sides of a dark scene.
+    ctx.fillStyle = active.light.grass;
+    ctx.fillRect(0, horizon, width, height - horizon);
+
+    // A scattering of static stars at night — positions are a deterministic
+    // hash of their index, not Math.random(), so they don't re-shuffle
+    // every frame.
+    if (night) {
+      ctx.fillStyle = 'rgba(255,255,255,.8)';
+      for (let i = 0; i < 60; i++) {
+        const sx = (i * 97.31) % width;
+        const sy = (i * 53.7) % (horizon * 0.85);
+        ctx.globalAlpha = 0.3 + ((i * 37) % 100) / 140;
+        ctx.fillRect(sx, sy, 1.6, 1.6);
+      }
+      ctx.globalAlpha = 1;
+    }
 
     // Cheap parallax hill layers, scrolling with camera x/z for a sense of motion.
     const scrollFar = -(camera.z * 0.00006) % (width * 2);
     const scrollNear = -(camera.z * 0.00018) % (width * 2);
-    drawHillLayer(ctx, width, horizon, scrollFar, 46, 'rgba(46,110,66,.55)');
-    drawHillLayer(ctx, width, horizon, scrollNear, 74, 'rgba(31,86,48,.7)');
+    const hillFar = night ? 'rgba(8,16,26,.65)' : 'rgba(46,110,66,.55)';
+    const hillNear = night ? 'rgba(5,10,18,.8)' : 'rgba(31,86,48,.7)';
+    drawHillLayer(ctx, width, horizon, scrollFar, 46, hillFar);
+    drawHillLayer(ctx, width, horizon, scrollNear, 74, hillNear);
   }
 
   function drawHillLayer(ctx, width, horizon, scroll, amp, color) {
@@ -96,7 +128,7 @@
   // Checkered black/white finish-line band, spanning the full road width —
   // subdivides the segment's trapezoid into columns rather than a flat
   // stripe, so it actually reads as a checker pattern, not two colored bars.
-  function drawFinishLineQuad(ctx, p1, p2, segIndex, fogT) {
+  function drawFinishLineQuad(ctx, p1, p2, segIndex, fogT, skyColor) {
     const cols = 8;
     for (let i = 0; i < cols; i++) {
       const t0 = i / cols, t1 = (i + 1) / cols;
@@ -105,7 +137,7 @@
       const x2a = (p2.x - p2.w) + 2 * p2.w * t0;
       const x2b = (p2.x - p2.w) + 2 * p2.w * t1;
       const dark = (segIndex + i) % 2 === 0;
-      ctx.fillStyle = mixColor(dark ? '#111111' : '#f4f4f4', COLORS.sky2, fogT);
+      ctx.fillStyle = mixColor(dark ? '#111111' : '#f4f4f4', skyColor, fogT);
       ctx.beginPath();
       ctx.moveTo(x1a, p1.y);
       ctx.lineTo(x2a, p2.y);
@@ -119,9 +151,28 @@
   // Renders the road + collects/draws billboard sprites (other karts, item
   // boxes, shells) for one viewport. `viewer` supplies {x, totalDistance}.
   // `sprites` is an array of {x, z, draw(ctx, scale), width} in world space.
-  function renderScene(ctx, track, viewer, width, height, sprites) {
+  // `conditions` (optional) is { night, fogStart, visibleDistance } from the
+  // selected race condition (see index.html's CONDITIONS) — omitted
+  // entirely, all three fall back to the normal clear-day look.
+  //
+  // fogStart alone (moving where the color blend toward sky starts) turned
+  // out to barely register: distant segments are already tiny from
+  // perspective, so recoloring them earlier didn't read as "reduced
+  // visibility" — it only became obvious once the actual draw/cull range
+  // itself shrinks. visibleDistance (0..1, fraction of the normal
+  // DRAW_DISTANCE) does that: the road-drawing loop and sprite culling
+  // both stop at `maxN` instead of the full range, and fogT is normalized
+  // against maxN (not the fixed DRAW_DISTANCE) so the fog-to-sky blend
+  // still finishes exactly at that now-closer cutoff — a real, hard wall
+  // of fog, not just an earlier tint.
+  function renderScene(ctx, track, viewer, width, height, sprites, conditions) {
+    const night = !!(conditions && conditions.night);
+    const fogStart = (conditions && conditions.fogStart) ?? FOG_START;
+    const visibleDistance = (conditions && conditions.visibleDistance) ?? 1;
+    const maxN = Math.max(1, Math.round(DRAW_DISTANCE * visibleDistance));
+    const active = night ? COLORS_NIGHT : COLORS;
     const camera = { z: viewer.totalDistance };
-    drawBackground(ctx, width, height, camera);
+    drawBackground(ctx, width, height, camera, active, night);
 
     const baseSegIndex = Track.segmentIndexAt(track, camera.z);
     const baseZ = camera.z - (camera.z % track.segmentLength);
@@ -134,14 +185,14 @@
     const spritesByN = new Map();
     for (const s of sprites) {
       const rel = s.z - camera.z;
-      if (rel < 0 || rel > DRAW_DISTANCE * track.segmentLength) continue;
+      if (rel < 0 || rel > maxN * track.segmentLength) continue;
       const n = Math.floor(rel / track.segmentLength);
       if (!spritesByN.has(n)) spritesByN.set(n, []);
       spritesByN.get(n).push(s);
     }
     const spriteDrawList = [];
 
-    for (let n = 0; n < DRAW_DISTANCE; n++) {
+    for (let n = 0; n < maxN; n++) {
       const worldZ1 = baseZ + n * track.segmentLength;
       const worldZ2 = worldZ1 + track.segmentLength;
       const segIndex = Track.segmentIndexAt(track, worldZ1);
@@ -163,18 +214,18 @@
 
       if (!p1 || !p2 || p2.y >= p1.y || p2.y >= maxY) continue;
 
-      const fogT = Math.max(0, (n / DRAW_DISTANCE - FOG_START) / (1 - FOG_START));
-      const palette = COLORS[seg.color];
-      const grassColor = mixColor(palette.grass, COLORS.sky2, fogT);
-      const rumbleColor = mixColor(palette.rumble, COLORS.sky2, fogT);
-      const roadColor = mixColor(palette.road, COLORS.sky2, fogT);
-      const laneColor = mixColor(palette.lane, COLORS.sky2, fogT);
+      const fogT = Math.max(0, (n / maxN - fogStart) / (1 - fogStart));
+      const palette = active[seg.color];
+      const grassColor = mixColor(palette.grass, active.sky2, fogT);
+      const rumbleColor = mixColor(palette.rumble, active.sky2, fogT);
+      const roadColor = mixColor(palette.road, active.sky2, fogT);
+      const laneColor = mixColor(palette.lane, active.sky2, fogT);
 
       drawQuad(ctx, p1.x, p1.y, p1.w * 1.55, p2.x, p2.y, p2.w * 1.55, grassColor);
       drawQuad(ctx, p1.x, p1.y, p1.w * 1.18, p2.x, p2.y, p2.w * 1.18, rumbleColor);
       drawQuad(ctx, p1.x, p1.y, p1.w, p2.x, p2.y, p2.w, roadColor);
       if (seg.finishLine) {
-        drawFinishLineQuad(ctx, p1, p2, segIndex, fogT);
+        drawFinishLineQuad(ctx, p1, p2, segIndex, fogT, active.sky2);
       } else {
         drawQuad(ctx, p1.x, p1.y, p1.w * 0.035, p2.x, p2.y, p2.w * 0.035, laneColor);
       }
