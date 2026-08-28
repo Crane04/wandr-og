@@ -145,7 +145,8 @@
 
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-      let selectedTrackId = Track.DEFAULT_ID;
+      const storedTrackId = localStorage.getItem('racingTrackId');
+      let selectedTrackId = Track.LIST.some((t) => t.id === storedTrackId) ? storedTrackId : Track.DEFAULT_ID;
       let track = Track.buildTrack(selectedTrackId);
       let cars = [];
       let itemBoxes = [];
@@ -175,6 +176,57 @@
         const g = clamp(((n >> 8) & 255) + percent, 0, 255);
         const b = clamp((n & 255) + percent, 0, 255);
         return `rgb(${r | 0},${g | 0},${b | 0})`;
+      }
+
+      // A single flickering nitro flame shooting out of one exhaust pipe —
+      // layered outer plume (color gradient) + a brighter, shorter inner
+      // core, both tapering to a point and jittering per-frame so twin
+      // flames don't pulse in lockstep (`x`'s sign decorrelates the phase).
+      // `hot` switches the outer plume to a blue "overcharged" palette —
+      // used when a second boost lands while one is already running, the
+      // same stacked-boost cue as a Mario Kart-style blue flame.
+      function drawNitroFlame(c, s, x, hot) {
+        const t = performance.now();
+        const flicker = 0.82 + 0.18 * Math.sin(t * 0.045 + x * 0.37);
+        const jitter = Math.sin(t * 0.09 + x * 0.13) * s * 0.045;
+        const len = s * (0.5 + 0.3 * flicker);
+        const baseW = s * 0.15;
+        c.save();
+        c.translate(x, 0);
+
+        const outer = c.createLinearGradient(0, 0, 0, len);
+        if (hot) {
+          outer.addColorStop(0, 'rgba(210,235,255,.95)');
+          outer.addColorStop(0.3, 'rgba(110,180,255,.85)');
+          outer.addColorStop(0.68, 'rgba(50,110,255,.5)');
+          outer.addColorStop(1, 'rgba(30,70,255,0)');
+        } else {
+          outer.addColorStop(0, 'rgba(255,235,180,.95)');
+          outer.addColorStop(0.3, 'rgba(255,160,50,.85)');
+          outer.addColorStop(0.68, 'rgba(255,80,20,.5)');
+          outer.addColorStop(1, 'rgba(255,40,10,0)');
+        }
+        c.fillStyle = outer;
+        c.beginPath();
+        c.moveTo(-baseW, 0);
+        c.quadraticCurveTo(-baseW * 0.55 + jitter, len * 0.55, 0, len);
+        c.quadraticCurveTo(baseW * 0.55 + jitter, len * 0.55, baseW, 0);
+        c.closePath();
+        c.fill();
+
+        const coreLen = len * 0.58;
+        const coreW = baseW * 0.42;
+        const core = c.createLinearGradient(0, 0, 0, coreLen);
+        core.addColorStop(0, 'rgba(255,255,255,.95)');
+        core.addColorStop(1, hot ? 'rgba(160,210,255,0)' : 'rgba(255,220,120,0)');
+        c.fillStyle = core;
+        c.beginPath();
+        c.moveTo(-coreW, 0);
+        c.quadraticCurveTo(-coreW * 0.4 + jitter * 0.5, coreLen * 0.5, 0, coreLen);
+        c.quadraticCurveTo(coreW * 0.4 + jitter * 0.5, coreLen * 0.5, coreW, 0);
+        c.closePath();
+        c.fill();
+        c.restore();
       }
 
       // Rear 3/4 view of a low, wide car — the angle you see other racers
@@ -227,12 +279,12 @@
         c.fill();
 
         if (car.boosting) {
-          c.fillStyle = 'rgba(255,150,30,.55)';
-          c.beginPath(); c.ellipse(-w * 0.45, bodyH * 0.05, s * 0.16, s * 0.3, 0, 0, Math.PI * 2); c.fill();
-          c.beginPath(); c.ellipse(w * 0.45, bodyH * 0.05, s * 0.16, s * 0.3, 0, 0, Math.PI * 2); c.fill();
-          c.fillStyle = 'rgba(255,220,140,.85)';
-          c.beginPath(); c.ellipse(-w * 0.45, bodyH * 0.02, s * 0.07, s * 0.14, 0, 0, Math.PI * 2); c.fill();
-          c.beginPath(); c.ellipse(w * 0.45, bodyH * 0.02, s * 0.07, s * 0.14, 0, 0, Math.PI * 2); c.fill();
+          c.save();
+          c.translate(0, bodyH * 0.05);
+          const hot = car.superBoostTimer > 0;
+          drawNitroFlame(c, s, -w * 0.45, hot);
+          drawNitroFlame(c, s, w * 0.45, hot);
+          c.restore();
         }
       }
 
@@ -245,12 +297,12 @@
         const h = w / sprite.aspect;
         c.drawImage(sprite.canvas, -w / 2, -h * 0.94, w, h);
         if (car.boosting) {
-          c.fillStyle = 'rgba(255,150,30,.55)';
-          c.beginPath(); c.ellipse(-w * 0.22, s * 0.05, s * 0.16, s * 0.3, 0, 0, Math.PI * 2); c.fill();
-          c.beginPath(); c.ellipse(w * 0.22, s * 0.05, s * 0.16, s * 0.3, 0, 0, Math.PI * 2); c.fill();
-          c.fillStyle = 'rgba(255,220,140,.85)';
-          c.beginPath(); c.ellipse(-w * 0.22, s * 0.02, s * 0.07, s * 0.14, 0, 0, Math.PI * 2); c.fill();
-          c.beginPath(); c.ellipse(w * 0.22, s * 0.02, s * 0.07, s * 0.14, 0, 0, Math.PI * 2); c.fill();
+          c.save();
+          c.translate(0, s * 0.05);
+          const hot = car.superBoostTimer > 0;
+          drawNitroFlame(c, s, -s * 0.22, hot);
+          drawNitroFlame(c, s, s * 0.22, hot);
+          c.restore();
         }
       }
 
@@ -328,6 +380,21 @@
         c.restore();
       }
 
+      function drawNameLabel(c, s, car) {
+        if (s < 14) return; // too small/far to read
+        c.save();
+        c.font = `700 ${Math.max(9, s * 0.24)}px "Baloo 2", Arial`;
+        c.textAlign = 'center';
+        c.textBaseline = 'alphabetic';
+        const y = -s * (car.items.length ? 2.05 : 1.7);
+        c.lineWidth = Math.max(1.5, s * 0.05);
+        c.strokeStyle = 'rgba(0,0,0,.75)';
+        c.strokeText(car.name, 0, y);
+        c.fillStyle = '#fff';
+        c.fillText(car.name, 0, y);
+        c.restore();
+      }
+
       function drawKart(c, s, car) {
         if (car.holeTimer > 0) { drawHoleAnimation(c, s, car); return; }
         const sprite = KartSprite.get(car.color);
@@ -335,6 +402,7 @@
         else drawKartShape(c, s, car);
         if (car.shieldTimer > 0) drawShieldBubble(c, s, car);
         drawItemRow(c, s, car);
+        drawNameLabel(c, s, car);
       }
 
       function drawItemBoxShape(c, s) {
@@ -476,7 +544,7 @@
           id: opts.id, name: opts.name, color: opts.color, playerNum: opts.playerNum, isAI: opts.isAI,
           x: opts.startX, totalDistance: opts.startZ,
           speed: 0, maxSpeed: MAX_SPEED,
-          boostCharge: 0, boosting: false, boostTimer: 0,
+          boostCharge: 0, boosting: false, boostTimer: 0, superBoostTimer: 0,
           items: [], selectedIndex: 0, spinTimer: 0, slowTimer: 0, shieldTimer: 0, holeTimer: 0, holeEscapeZ: 0, boostPadCooldown: 0,
           laps: 0, lapStart: 0, bestLap: Infinity,
           finished: false, finishTime: 0, position: 1,
@@ -523,11 +591,20 @@
 
       function getCarByPlayerNum(n) { return cars.find((c) => c.playerNum === n); }
 
+      // Starts (or restarts) a boost. If the car is already mid-boost, this
+      // is a *stacked* boost — flag it so the flame renders hot blue
+      // instead of orange (see drawNitroFlame) for the rest of this boost,
+      // same "stacked nitro" cue as a Mario Kart-style blue flame.
+      function triggerBoost(car, duration) {
+        if (car.boosting) car.superBoostTimer = Math.max(car.superBoostTimer, duration);
+        car.boosting = true;
+        car.boostTimer = duration;
+      }
+
       function tryBoost(car) {
         if (phase !== 'racing' || car.finished || car.spinTimer > 0) return;
         if (!car.boosting && car.boostCharge >= 30) {
-          car.boosting = true;
-          car.boostTimer = 1.0 + (car.boostCharge / 100) * 2.2; // was 0.4 + *1.1 — too short
+          triggerBoost(car, 1.0 + (car.boostCharge / 100) * 2.2); // was 0.4 + *1.1 — too short
           car.boostCharge = 0;
         }
       }
@@ -563,8 +640,7 @@
         const kind = car.items.splice(idx, 1)[0];
         car.selectedIndex = car.items.length ? Math.min(idx, car.items.length - 1) : 0;
         if (kind === 'boost') {
-          car.boosting = true;
-          car.boostTimer = 2.2; // was 1.0 — too short
+          triggerBoost(car, 2.2); // was 1.0 — too short
         } else if (kind === 'side') {
           useSideHit(car);
         } else if (kind === 'shield') {
@@ -580,23 +656,36 @@
         }
       }
 
-      // Is `car` currently over any hazard in `list` (each {segmentIndex, x}),
-      // measured the same way item-box pickup proximity already is. Returns
-      // the matched hazard's absolute world-z (in the car's current lap),
-      // not just a boolean, so callers that need to escape a specific spot
-      // (see the hole-exit nudge below) know exactly where it is rather than
-      // guessing a fixed offset.
-      function findNearHazard(car, list, xRadius, zRadius) {
-        const lapZ = ((car.totalDistance % track.length) + track.length) % track.length;
-        const lapBase = car.totalDistance - lapZ;
+      // Is `car` currently over any hazard in `list` (each {segmentIndex, x}).
+      // Checked against the *swept* path the car covers this frame (its
+      // current z through z + speed*dt) padded by the hazard's own
+      // footprint, not a big flat radius around a point — a flat radius
+      // wide enough to stop a boosted kart from tunneling past a hole in
+      // one frame (frame travel can exceed a full segment length at top
+      // boost) was also wide enough to trigger the hazard well before the
+      // kart was ever visibly on top of it. Sweeping the actual distance
+      // traveled this frame keeps the fast-car case safe while staying
+      // tight to the hazard's true visual footprint the rest of the time.
+      // Returns the matched hazard's absolute world-z (in the car's current
+      // lap), not just a boolean, so callers that need to escape a specific
+      // spot (see the hole-exit nudge below) know exactly where it is
+      // rather than guessing a fixed offset.
+      const HAZARD_Z_PAD = 55; // half the hazard's own footprint, world units
+      function findNearHazard(car, list, xRadius, dt) {
+        const zStart = car.totalDistance;
+        const zEnd = zStart + car.speed * dt;
+        const zLo = Math.min(zStart, zEnd) - HAZARD_Z_PAD;
+        const zHi = Math.max(zStart, zEnd) + HAZARD_Z_PAD;
+        const lapZ = ((zStart % track.length) + track.length) % track.length;
+        const lapBase = zStart - lapZ;
         for (const h of list) {
-          const hz = h.segmentIndex * track.segmentLength;
-          if (Math.abs(lapZ - hz) < zRadius && Math.abs(car.x - h.x) < xRadius) return lapBase + hz;
+          const hzAbs = lapBase + h.segmentIndex * track.segmentLength;
+          if (hzAbs >= zLo && hzAbs <= zHi && Math.abs(car.x - h.x) < xRadius) return hzAbs;
         }
         return null;
       }
-      function nearHazard(car, list, xRadius, zRadius) {
-        return findNearHazard(car, list, xRadius, zRadius) !== null;
+      function nearHazard(car, list, xRadius, dt) {
+        return findNearHazard(car, list, xRadius, dt) !== null;
       }
 
       function updateCarPhysics(car, input, dt, now) {
@@ -634,7 +723,7 @@
         car.x -= dx * speedPercent * segment.curve * CENTRIFUGAL;
 
         const offroad = Math.abs(car.x) > 1;
-        const inGrease = nearHazard(car, track.greasePatches, 0.35, 140);
+        const inGrease = nearHazard(car, track.greasePatches, 0.35, dt);
         // Off-road is a real but escapable penalty: weaker accel and a much
         // lower top speed, not a decel that can outrun full throttle — that
         // combination made off-road speed clamp to exactly 0 forever.
@@ -644,8 +733,9 @@
 
         if (car.boosting) {
           car.boostTimer -= dt;
-          if (car.boostTimer <= 0) car.boosting = false;
+          if (car.boostTimer <= 0) { car.boosting = false; car.superBoostTimer = 0; }
         }
+        if (car.superBoostTimer > 0) car.superBoostTimer = Math.max(0, car.superBoostTimer - dt);
         if (car.slowTimer > 0) car.slowTimer = Math.max(0, car.slowTimer - dt);
         if (car.shieldTimer > 0) car.shieldTimer = Math.max(0, car.shieldTimer - dt);
         // Threshold lowered from 0.45 and charge rate raised from 55 —
@@ -663,23 +753,23 @@
         car.x = clamp(car.x, -1.6, 1.6);
 
         // Check boost pads/holes against the *pre-move* position, not the
-        // post-move one below — at highway speed a single frame can cover
-        // more ground than a post-move check's radius, so a fast car could
-        // sail past a hole without ever registering inside it (same class
-        // of single-frame-tunneling bug as the kart-vs-kart collision fix
-        // earlier this session).
+        // post-move one below, and sweep the frame's actual travel distance
+        // (see findNearHazard) — a fast car covers more ground in one frame
+        // than the hazard's own footprint, so a naive post-move point check
+        // could sail past a hole without ever registering inside it (same
+        // class of single-frame-tunneling bug as the kart-vs-kart collision
+        // fix earlier this session).
         if (car.boostPadCooldown > 0) {
           car.boostPadCooldown = Math.max(0, car.boostPadCooldown - dt);
-        } else if (nearHazard(car, track.boostPads, 0.4, 130)) {
-          car.boosting = true;
-          car.boostTimer = 2.2; // was 1.0 — too short
+        } else if (nearHazard(car, track.boostPads, 0.4, dt)) {
+          triggerBoost(car, 2.2); // was 1.0 — too short
           car.boostPadCooldown = 1.5;
         }
-        const holeZ = findNearHazard(car, track.holes, 0.35, 130);
+        const holeZ = findNearHazard(car, track.holes, 0.35, dt);
         if (holeZ !== null) {
           car.holeTimer = 3.0;
           car.speed = 0;
-          car.holeEscapeZ = holeZ + 130 + 70; // just past this specific hole's trigger radius
+          car.holeEscapeZ = holeZ + HAZARD_Z_PAD + 30; // just past this specific hole's trigger zone
         }
 
         car.totalDistance += car.speed * dt;
@@ -1155,7 +1245,14 @@
           card.appendChild(canvas);
           drawTrackThumb(canvas, Track.buildTrack(t.id).polyline);
           card.addEventListener('click', () => {
+            // Random's build() rolls a new layout on every buildTrack() call
+            // (see track.js) — re-drawing its thumbnail here on every click,
+            // even repeat clicks, makes that "different every time" visible
+            // rather than showing one fixed-looking preview forever. The
+            // race itself always gets its own fresh roll at start too.
+            if (t.id === 'random') drawTrackThumb(canvas, Track.buildTrack(t.id).polyline);
             selectedTrackId = t.id;
+            localStorage.setItem('racingTrackId', selectedTrackId);
             el.querySelectorAll('.track-card').forEach((c) => c.classList.toggle('selected', c.dataset.trackId === t.id));
           });
           el.appendChild(card);

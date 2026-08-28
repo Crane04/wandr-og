@@ -74,6 +74,70 @@
         t.addStraight(t.LEN.SHORT);
       },
     },
+    coast: {
+      name: 'Serpentine Coast',
+      desc: 'Long, wide sweepers that flow into each other. Fast and rhythmic.',
+      build(t) {
+        t.addStraight(t.LEN.MEDIUM);
+        t.addCurve(t.LEN.LONG, t.CURVE.EASY);
+        t.addCurve(t.LEN.LONG, -t.CURVE.EASY);
+        t.addCurve(t.LEN.LONG, t.CURVE.EASY);
+        t.addStraight(t.LEN.MEDIUM);
+        t.addCurve(t.LEN.LONG, -t.CURVE.MEDIUM);
+        t.addCurve(t.LEN.LONG, t.CURVE.MEDIUM);
+        t.addStraight(t.LEN.SHORT);
+        t.addCurve(t.LEN.MEDIUM, t.CURVE.EASY);
+        t.addCurve(t.LEN.MEDIUM, -t.CURVE.EASY);
+        t.addStraight(t.LEN.LONG);
+      },
+    },
+    switchback: {
+      name: 'Switchback Summit',
+      desc: 'Relentless hairpins climbing a mountain pass. The most technical layout.',
+      build(t) {
+        t.addStraight(t.LEN.SHORT);
+        t.addCurve(t.LEN.SHORT, t.CURVE.EXTREME);    // hairpin
+        t.addCurve(t.LEN.SHORT, -t.CURVE.EXTREME);   // hairpin
+        t.addCurve(t.LEN.SHORT, t.CURVE.EXTREME);    // hairpin
+        t.addCurve(t.LEN.SHORT, -t.CURVE.EXTREME);   // hairpin
+        t.addStraight(t.LEN.SHORT);
+        t.addCurve(t.LEN.SHORT, t.CURVE.HARD);
+        t.addCurve(t.LEN.SHORT, -t.CURVE.HARD);
+        t.addSCurves();
+        t.addCurve(t.LEN.SHORT, t.CURVE.EXTREME);    // hairpin
+        t.addCurve(t.LEN.SHORT, -t.CURVE.EXTREME);   // hairpin
+        t.addStraight(t.LEN.MEDIUM);
+      },
+    },
+    // Unlike the hand-authored layouts above, this one's build() rolls a
+    // fresh sequence of pieces with Math.random() on every call — so every
+    // buildTrack('random') (each race, each thumbnail redraw) produces a
+    // different track, not one fixed extra layout.
+    random: {
+      name: 'Random Circuit',
+      desc: 'A freshly generated layout — different every time you race it.',
+      build(t) {
+        const lens = [t.LEN.SHORT, t.LEN.MEDIUM, t.LEN.LONG];
+        const curves = [t.CURVE.EASY, t.CURVE.MEDIUM, t.CURVE.HARD, t.CURVE.EXTREME];
+        const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+        t.addStraight(t.LEN.MEDIUM); // flat run-up to the start/finish line
+        const pieceCount = 8 + Math.floor(Math.random() * 6);
+        let straightStreak = 0;
+        for (let i = 0; i < pieceCount; i++) {
+          const forceCurve = straightStreak >= 2;
+          if (!forceCurve && Math.random() < 0.35) {
+            t.addStraight(pick(lens));
+            straightStreak++;
+          } else {
+            const sign = Math.random() < 0.5 ? 1 : -1;
+            t.addCurve(pick(lens), pick(curves) * sign);
+            straightStreak = 0;
+          }
+        }
+        t.addStraight(t.LEN.MEDIUM); // settle back onto flat road before the line
+      },
+    },
   };
 
   function buildFromLayout(layout) {
@@ -130,6 +194,22 @@
       px += Math.cos(heading);
       py += Math.sin(heading);
       if (i % step === 0) polyline.push({ x: px, y: py });
+    }
+    // The heading normalizer above only guarantees the total turning sums to
+    // a full 2*PI revolution — for asymmetric layouts (uneven mixes of
+    // straights/curves) the accumulated (x, y) position doesn't actually
+    // land back on the origin. Since the start/finish marker and every car's
+    // minimap dot are placed using this same polyline, an unclosed loop
+    // means "where the final lap ends" visibly lands somewhere else on the
+    // map than the start position. Shear-correct every point by its
+    // fractional progress along the lap so the last point exactly coincides
+    // with the first, regardless of how lopsided the raw shape is.
+    const last = polyline[polyline.length - 1];
+    const n = polyline.length - 1;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      polyline[i].x -= t * last.x;
+      polyline[i].y -= t * last.y;
     }
     // Normalize polyline into a 0..1 box for easy minimap scaling.
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
