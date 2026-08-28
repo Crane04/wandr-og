@@ -72,6 +72,7 @@
         text-align: left; transition: border-color .15s, background .15s;
       }
       .track-card:hover { border-color: #5689e8; }
+      .track-card:focus-visible, button:focus-visible { outline: 3px solid #7fe8ff; outline-offset: 2px; }
       .track-card.selected { border-color: #ffd23f; background: #1e2540; box-shadow: 0 0 12px rgba(255,210,63,.35); }
       .track-card .name { font-family: "Bangers", cursive; font-size: 18px; letter-spacing: 1px; color: #fff; }
       .track-card .desc { font-size: 11px; color: #8fa0c9; margin-top: 4px; line-height: 1.4; }
@@ -92,8 +93,10 @@
       .c-go { color: #4dff6a; }
       @keyframes pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-      #pauseOverlay { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 5; }
+      #pauseOverlay { display: none; position: fixed; inset: 0; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(0,0,0,.5); z-index: 5; }
       #pauseOverlay h2 { font-family: "Bangers", cursive; font-size: 54px; letter-spacing: 6px; color: #ffd23f; }
+      #pauseOverlay .actions { display: flex; gap: 10px; }
+      #quitBtn { background: #4a1a1a; color: #ffd6d6; border: 1px solid #a04040; }
 
       #podiumOverlay { display: none; position: fixed; inset: 0; background: rgba(4,6,16,.92); align-items: center; justify-content: center; flex-direction: column; gap: 14px; z-index: 7; }
       #podiumTitle { font-family: "Bangers", cursive; font-size: 44px; color: #ffd23f; text-shadow: 0 0 16px rgba(255,178,0,.6); }
@@ -129,7 +132,13 @@
     <div id="topBar"><span id="topBarLabel">RACE</span><span id="timerDisplay">3:00</span></div>
     <canvas id="game" width="1280" height="720"></canvas>
     <div id="countdownOverlay"><div id="countdownNum" class="display-font">3</div></div>
-    <div id="pauseOverlay"><h2>PAUSED</h2></div>
+    <div id="pauseOverlay">
+      <h2>PAUSED</h2>
+      <div class="actions">
+        <button id="resumeBtn">Resume</button>
+        <button id="quitBtn">Quit to Menu</button>
+      </div>
+    </div>
     <div id="podiumOverlay">
       <div id="podiumTitle">FINISH</div>
       <div id="podiumList"></div>
@@ -214,6 +223,15 @@
       let raceStartedAt = 0;
       let countdownStartedAt = 0;
       let lastFrame = 0;
+      // Tracks the live requestAnimationFrame chain so a restart (Play
+      // Again, or now Quit-then-play-again) can cancel the old one before
+      // starting a new — without this, every startGame() call left its
+      // previous frameTick chain running forever (it reschedules itself
+      // unconditionally), so N game starts meant N concurrent loops each
+      // doing a full tick/draw pass per real frame. Confirmed by counting
+      // actual rAF firings before/after a restart: ~2x after just one
+      // restart, compounding with every subsequent one.
+      let rafId = null;
       // Time Attack: opponents are still on track (traffic/hazards), but the
       // human's win condition is personal — finish all laps before this
       // clock runs out, regardless of where AI opponents place. Pace
@@ -1535,10 +1553,11 @@
         if (phase === 'countdown') updateCountdown(now);
         else if (phase === 'racing' && !paused) { tickRace(dt, now); updateTimerDisplay(now); }
         if (phase !== 'lobby') draw();
-        requestAnimationFrame(frameTick);
+        rafId = requestAnimationFrame(frameTick);
       }
 
       function startGame(selectedMode) {
+        if (rafId !== null) cancelAnimationFrame(rafId); // see rafId comment above
         mode = selectedMode;
         humanCount = selectedMode === 'two' ? 2 : 1; // 'ai' and 'timer' both play one human vs a full AI grid
         timerModeActive = selectedMode === 'timer';
@@ -1556,13 +1575,33 @@
         updateRanking();
         startCountdown(performance.now());
         lastFrame = performance.now();
-        requestAnimationFrame(frameTick);
+        rafId = requestAnimationFrame(frameTick);
       }
 
       function togglePause() {
         if (phase !== 'racing') return;
         paused = !paused;
         document.getElementById('pauseOverlay').style.display = paused ? 'flex' : 'none';
+      }
+
+      // Bails out of a race in progress (from the pause menu) back to the
+      // lobby, instead of the only prior way out being a full page refresh.
+      // Cancelling rafId here matters — without it, the still-running frame
+      // loop from this race would keep alive alongside whatever loop the
+      // next startGame() spins up (see the rafId comment above).
+      function quitToLobby() {
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        phase = 'lobby';
+        paused = false;
+        document.getElementById('pauseOverlay').style.display = 'none';
+        document.getElementById('podiumOverlay').style.display = 'none';
+        document.getElementById('countdownOverlay').style.display = 'none';
+        document.getElementById('topBar').style.display = 'none';
+        document.getElementById('timerDisplay').style.display = 'none';
+        canvas.style.display = 'none';
+        document.getElementById('lobby').style.display = '';
+        document.getElementById('playBar').style.display = '';
+        syncLobby();
       }
 
       ws.onopen = () => {
@@ -1629,6 +1668,39 @@
         ctx2.stroke();
       }
 
+      // Cards are plain divs (not <button>s, for the custom layout/thumbnail
+      // markup) so they're invisible to keyboard nav by default — this is
+      // the whole fix: focusable via Tab, and Enter/Space fires the same
+      // click handler already wired up rather than duplicating its logic.
+      function makeFocusable(el) {
+        el.tabIndex = 0;
+        el.setAttribute('role', 'button');
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); }
+        });
+      }
+
+      // Arrow-key equivalent of Tab/Shift+Tab across every focusable lobby
+      // control (track cards, condition cards, the play-bar buttons) — full
+      // mouse-free navigation without needing real 2D grid math, since
+      // Left/Up and Right/Down just walk the same focus order Tab already
+      // uses.
+      function focusableLobbyEls() {
+        return Array.from(document.querySelectorAll('#lobby [tabindex], #lobby button, #playBar button'))
+          .filter((el) => el.offsetParent !== null && !el.disabled);
+      }
+      window.addEventListener('keydown', (e) => {
+        if (phase !== 'lobby') return;
+        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+        const els = focusableLobbyEls();
+        if (!els.length) return;
+        e.preventDefault();
+        const cur = els.indexOf(document.activeElement);
+        const dir = (e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : -1;
+        const next = els[(cur < 0 ? 0 : cur + dir + els.length) % els.length];
+        next.focus();
+      });
+
       function buildTrackSelect() {
         const el = document.getElementById('trackSelect');
         el.innerHTML = '';
@@ -1642,6 +1714,7 @@
           card.innerHTML = `<div class="name display-font">${t.name}</div><div class="desc">${t.desc}</div>`;
           card.appendChild(canvas);
           drawTrackThumb(canvas, Track.buildTrack(t.id).polyline);
+          makeFocusable(card);
           card.addEventListener('click', () => {
             // Random's build() rolls a new layout on every buildTrack() call
             // (see track.js) — re-drawing its thumbnail here on every click,
@@ -1664,6 +1737,7 @@
           card.className = 'track-card' + (cnd.id === selectedConditionId ? ' selected' : '');
           card.dataset.conditionId = cnd.id;
           card.innerHTML = `<div class="name display-font">${cnd.name}</div><div class="desc">${cnd.desc}</div>`;
+          makeFocusable(card);
           card.addEventListener('click', () => {
             selectedConditionId = cnd.id;
             localStorage.setItem('racingConditionId', selectedConditionId);
@@ -1692,7 +1766,16 @@
       document.getElementById('fullscreenBtn').addEventListener('click', () => {
         document.body.requestFullscreen?.().catch(() => {});
       });
-      window.addEventListener('keydown', (e) => { if (e.key === 'Escape') togglePause(); });
+      document.getElementById('resumeBtn').addEventListener('click', () => togglePause());
+      document.getElementById('quitBtn').addEventListener('click', () => quitToLobby());
+      // Escape pauses (unchanged); a second Escape while already paused
+      // quits straight to the lobby instead of needing the mouse — the
+      // pause menu's Quit button covers the same action for touch/mouse.
+      window.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (paused) quitToLobby();
+        else togglePause();
+      });
 
       buildGridPreview();
       buildTrackSelect();

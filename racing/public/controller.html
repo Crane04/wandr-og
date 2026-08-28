@@ -316,9 +316,14 @@
       function send(action, state) {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'input', action, state }));
       }
+      // Most phones support this; iOS Safari doesn't at all — the try/catch
+      // plus optional chaining means it's silently a no-op there rather
+      // than an error, so this never needs its own feature-detection branch
+      // at each call site.
+      function vibrate(ms) { try { navigator.vibrate?.(ms); } catch {} }
       function bindHold(id, action) {
         const el = document.getElementById(id);
-        const down = (e) => { e.preventDefault(); el.classList.add('active'); send(action, 'down'); };
+        const down = (e) => { e.preventDefault(); el.classList.add('active'); vibrate(15); send(action, 'down'); };
         const up = (e) => { e.preventDefault(); el.classList.remove('active'); send(action, 'up'); };
         el.addEventListener('pointerdown', down);
         el.addEventListener('pointerup', up);
@@ -333,7 +338,7 @@
       bindHold('squareBtn', 'useItem');  // ■ fire the selected item (was brake — D-pad down covers that now)
       bindHold('circleBtn', 'boost');    // ● nitro
       bindHold('triangleBtn', 'item');   // ▲ cycle/select which held item is armed
-      document.getElementById('startControl').addEventListener('pointerdown', (e) => { e.preventDefault(); send('start', 'down'); });
+      document.getElementById('startControl').addEventListener('pointerdown', (e) => { e.preventDefault(); vibrate(15); send('start', 'down'); });
       document.getElementById('startControl').addEventListener('pointerup', (e) => { e.preventDefault(); send('start', 'up'); });
       ws.onopen = () => {
         status.textContent = 'Connected';
@@ -364,6 +369,7 @@
         ws.send(JSON.stringify({ type: 'join', room, controllerId }));
       }
       document.getElementById('joinBtn').addEventListener('click', () => {
+        vibrate(15);
         joinRoom(roomInput.value);
       });
       roomInput.addEventListener('keydown', (e) => {
