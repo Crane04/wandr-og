@@ -121,6 +121,8 @@
       <div id="trackSelect" class="track-select"></div>
       <div class="section-label">2. Race conditions <span class="hint">— tap a card to choose</span></div>
       <div id="conditionSelect" class="track-select"></div>
+      <div class="section-label">3. Difficulty <span class="hint">— tap a card to choose</span></div>
+      <div id="difficultySelect" class="track-select"></div>
     </div>
 
     <div id="playBar">
@@ -214,6 +216,30 @@
       const storedConditionId = localStorage.getItem('racingConditionId');
       let selectedConditionId = CONDITIONS[storedConditionId] ? storedConditionId : DEFAULT_CONDITION;
       let activeConditions = CONDITIONS[DEFAULT_CONDITION];
+
+      // How hard the AI grid races, independent of track/conditions.
+      // aiSpeedMultiplier scales the AI's baseline top speed before the
+      // rubberband adjustment below is applied; rubberbandBand caps how much
+      // that adjustment can still pull a bot toward the nearest human's pace
+      // (a wide band means even a fast Insane bot eases off once well ahead,
+      // so lower difficulties lean on a wide band to stay forgiving while
+      // higher ones narrow it so a strong bot actually pulls away). wander
+      // is the amplitude of the bots' per-car steering wobble (see ai.js) —
+      // lower means a tighter, more precise racing line. brakeThreshold is
+      // how sharp a corner has to be before a bot lifts off the throttle at
+      // all — higher means it carries speed deeper into corners a cautious
+      // bot would've already braked for.
+      const DIFFICULTIES = {
+        easy: { name: 'Easy', desc: 'Relaxed field — good for learning a new track.', aiSpeedMultiplier: 0.88, rubberbandBand: 0.16, boostChance: 0.02, itemChanceMultiplier: 0.6, wander: 0.24, brakeThreshold: 14 },
+        normal: { name: 'Normal', desc: 'Balanced field — a fair fight from lights to flag.', aiSpeedMultiplier: 1.0, rubberbandBand: 0.12, boostChance: 0.03, itemChanceMultiplier: 1.0, wander: 0.18, brakeThreshold: 20 },
+        hard: { name: 'Hard', desc: 'Sharper lines, quicker items — closing a gap takes real pace.', aiSpeedMultiplier: 1.06, rubberbandBand: 0.08, boostChance: 0.05, itemChanceMultiplier: 1.3, wander: 0.1, brakeThreshold: 26 },
+        insane: { name: 'Insane', desc: 'Ruthless. Full pace, no mercy, items fired the instant they line up.', aiSpeedMultiplier: 1.12, rubberbandBand: 0.04, boostChance: 0.08, itemChanceMultiplier: 1.6, wander: 0.04, brakeThreshold: 34 },
+      };
+      const DIFFICULTY_LIST = Object.keys(DIFFICULTIES).map((id) => ({ id, name: DIFFICULTIES[id].name, desc: DIFFICULTIES[id].desc }));
+      const DEFAULT_DIFFICULTY = 'normal';
+      const storedDifficultyId = localStorage.getItem('racingDifficultyId');
+      let selectedDifficultyId = DIFFICULTIES[storedDifficultyId] ? storedDifficultyId : DEFAULT_DIFFICULTY;
+      let activeDifficulty = DIFFICULTIES[DEFAULT_DIFFICULTY];
 
       const storedTrackId = localStorage.getItem('racingTrackId');
       let selectedTrackId = Track.LIST.some((t) => t.id === storedTrackId) ? storedTrackId : Track.DEFAULT_ID;
@@ -1425,8 +1451,8 @@
         const prevZ = cars.map((c) => c.totalDistance);
         for (const car of cars) {
           if (car.isAI) {
-            AI.applyRubberband(car, humans, MAX_SPEED);
-            const input = AI.computeAIInput(car, track, cars, activeConditions);
+            AI.applyRubberband(car, humans, MAX_SPEED, activeDifficulty);
+            const input = AI.computeAIInput(car, track, cars, activeConditions, activeDifficulty);
             if (input.wantBoost) tryBoost(car);
             if (input.wantItem) tryUseItem(car);
             updateCarPhysics(car, input, dt, now);
@@ -1655,6 +1681,7 @@
         humanCount = selectedMode === 'two' ? 2 : 1; // 'ai' and 'timer' both play one human vs a full AI grid
         timerModeActive = selectedMode === 'timer';
         activeConditions = CONDITIONS[selectedConditionId] || CONDITIONS[DEFAULT_CONDITION];
+        activeDifficulty = DIFFICULTIES[selectedDifficultyId] || DIFFICULTIES[DEFAULT_DIFFICULTY];
         track = Track.buildTrack(selectedTrackId); // must happen before buildGrid()/itemBoxes below
         raceTimeLimitMs = Math.round(track.length * TIME_ATTACK_PACE_MS_PER_UNIT * TIME_ATTACK_BUFFER);
         cars = buildGrid(humanCount);
@@ -1839,6 +1866,23 @@
           el.appendChild(card);
         });
       }
+      function buildDifficultySelect() {
+        const el = document.getElementById('difficultySelect');
+        el.innerHTML = '';
+        DIFFICULTY_LIST.forEach((d) => {
+          const card = document.createElement('div');
+          card.className = 'track-card' + (d.id === selectedDifficultyId ? ' selected' : '');
+          card.dataset.difficultyId = d.id;
+          card.innerHTML = `<div class="name display-font">${d.name}</div><div class="desc">${d.desc}</div>`;
+          makeFocusable(card);
+          card.addEventListener('click', () => {
+            selectedDifficultyId = d.id;
+            localStorage.setItem('racingDifficultyId', selectedDifficultyId);
+            el.querySelectorAll('.track-card').forEach((c) => c.classList.toggle('selected', c.dataset.difficultyId === d.id));
+          });
+          el.appendChild(card);
+        });
+      }
       function syncLobby() {
         document.getElementById('players').textContent = connectedPlayers.size
           ? `${connectedPlayers.size} driver${connectedPlayers.size === 1 ? '' : 's'} connected`
@@ -1874,6 +1918,7 @@
       buildGridPreview();
       buildTrackSelect();
       buildConditionSelect();
+      buildDifficultySelect();
       syncLobby();
     </script>
   </body>

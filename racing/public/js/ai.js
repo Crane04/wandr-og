@@ -10,7 +10,7 @@
   // visibleDistance that shortens the human's actual draw distance keeps
   // both grounded in the same "how far can anyone tell what's coming" number
   // instead of needing separate, easily-mismatched tuning.
-  function computeAIInput(car, track, allCars, conditions) {
+  function computeAIInput(car, track, allCars, conditions, difficulty) {
     const segIndex = Track.segmentIndexAt(track, car.totalDistance);
     const visibleDistance = (conditions && conditions.visibleDistance) ?? 1;
     const lookahead = Math.max(1, Math.round(7 * visibleDistance));
@@ -23,7 +23,11 @@
 
     // A slow, per-car wander so bots don't all glue themselves to the exact
     // same racing line — otherwise every AI looks robotically identical.
-    targetX += Math.sin(performance.now() * 0.0006 + car.id * 1.7) * 0.18;
+    // Difficulty scales the amplitude: a lower-difficulty bot wanders more
+    // (a looser, more beatable line), a higher one holds tighter to the
+    // racing line computed above.
+    const wander = difficulty ? difficulty.wander : 0.18;
+    targetX += Math.sin(performance.now() * 0.0006 + car.id * 1.7) * wander;
 
     for (const other of allCars) {
       if (other === car || other.finished) continue;
@@ -52,15 +56,19 @@
     car.maxSpeed *= visibilityCaution;
     // Raised from 14: braking less readily on merely-tight bends lets bots
     // carry speed (and drift, same as a human would) through more corners
-    // instead of stabbing the brake on almost every turn.
-    const sharpTurnAhead = Math.abs(curveSum) > 20;
+    // instead of stabbing the brake on almost every turn. Difficulty pushes
+    // this further in either direction — a higher difficulty bot commits to
+    // more corners at speed instead of lifting off.
+    const brakeThreshold = difficulty ? difficulty.brakeThreshold : 20;
+    const sharpTurnAhead = Math.abs(curveSum) > brakeThreshold;
+    const boostChance = difficulty ? difficulty.boostChance : 0.03;
 
     return {
       steer,
       throttle: true,
       brake: sharpTurnAhead && car.speed > car.maxSpeed * 0.7,
-      wantBoost: car.boostCharge >= 55 && Math.random() < 0.03,
-      wantItem: wantsToUseItem(car, allCars, track),
+      wantBoost: car.boostCharge >= 55 && Math.random() < boostChance,
+      wantItem: wantsToUseItem(car, allCars, track, difficulty),
     };
   }
 
@@ -70,17 +78,19 @@
   // nobody's actually ahead. Only fire those when there's a real target;
   // side-hit needs someone actually alongside; boost/shield don't need a
   // target at all.
-  function wantsToUseItem(car, allCars, track) {
+  function wantsToUseItem(car, allCars, track, difficulty) {
     if (!car.items.length) return false;
     const kind = car.items[Math.min(car.selectedIndex, car.items.length - 1)];
-    if (kind === 'boost' || kind === 'shield' || kind === 'star') return Math.random() < 0.04;
+    const mult = difficulty ? difficulty.itemChanceMultiplier : 1;
+    const chance = (p) => Math.min(1, p * mult);
+    if (kind === 'boost' || kind === 'shield' || kind === 'star') return Math.random() < chance(0.04);
     // Dropped behind, not aimed — no target needed, just don't spam it.
-    if (kind === 'banana') return Math.random() < 0.03;
+    if (kind === 'banana') return Math.random() < chance(0.03);
     // Locks onto 1st place wherever they are on track — wasted if the AI
     // using it already *is* 1st, so hold onto it until that's not true.
-    if (kind === 'missile') return car.position > 1 && Math.random() < 0.05;
-    if (kind === 'side') return hasTargetBeside(car, allCars) && Math.random() < 0.5;
-    return hasTargetAhead(car, allCars, track) && Math.random() < 0.5; // bomb / swap / slow
+    if (kind === 'missile') return car.position > 1 && Math.random() < chance(0.05);
+    if (kind === 'side') return hasTargetBeside(car, allCars) && Math.random() < chance(0.5);
+    return hasTargetAhead(car, allCars, track) && Math.random() < chance(0.5); // bomb / swap / slow
   }
 
   function hasTargetAhead(car, allCars, track) {
@@ -104,15 +114,22 @@
 
   // Nudges an AI's effective top speed toward the nearest human's pace so
   // the pack stays competitive without being unbeatable or trivial.
-  function applyRubberband(car, humanCars, baseMaxSpeed) {
-    if (!humanCars.length) { car.maxSpeed = baseMaxSpeed; return; }
+  // difficulty.aiSpeedMultiplier sets the bot's real baseline before that
+  // adjustment; difficulty.rubberbandBand caps how far the adjustment can
+  // still pull it off that baseline — a wide band (low difficulty) keeps a
+  // struggling bot glued near the player even if its baseline is slow, a
+  // narrow one (high difficulty) lets a fast baseline actually pull away.
+  function applyRubberband(car, humanCars, baseMaxSpeed, difficulty) {
+    const base = baseMaxSpeed * (difficulty ? difficulty.aiSpeedMultiplier : 1);
+    if (!humanCars.length) { car.maxSpeed = base; return; }
     let nearestGap = Infinity;
     for (const h of humanCars) {
       const gap = car.totalDistance - h.totalDistance;
       if (Math.abs(gap) < Math.abs(nearestGap)) nearestGap = gap;
     }
-    const band = clamp(nearestGap / 4000, -0.12, 0.12);
-    car.maxSpeed = baseMaxSpeed * (1 - band);
+    const bandCap = difficulty ? difficulty.rubberbandBand : 0.12;
+    const band = clamp(nearestGap / 4000, -bandCap, bandCap);
+    car.maxSpeed = base * (1 - band);
   }
 
   window.AI = { computeAIInput, applyRubberband };
