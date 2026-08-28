@@ -308,12 +308,23 @@
           const axisX = gp.axes[0] || 0;
           const dpadLeft = !!gp.buttons[14]?.pressed, dpadRight = !!gp.buttons[15]?.pressed;
           const dpadUp = !!gp.buttons[12]?.pressed, dpadDown = !!gp.buttons[13]?.pressed;
-          const btnA = !!gp.buttons[0]?.pressed;
+          // Face-button indices only hold the W3C bottom/right/left/top
+          // order (0/1/2/3) when the browser recognizes the pad and reports
+          // gp.mapping === 'standard'. Many PS-layout controllers (DualShock
+          // clones, etc.) aren't in the browser's curated device DB and fall
+          // back to their raw HID report order instead, which for that
+          // common case comes through as [Triangle, Circle, X, Square] —
+          // confirmed against a real device where accelerate/use-item/cycle
+          // fired off Triangle/X/Square respectively while boost (Circle,
+          // index 1 either way) happened to still work.
+          const standardFace = gp.mapping === 'standard';
+          const faceIdx = standardFace ? { accel: 0, boost: 1, useItem: 2, item: 3 } : { accel: 2, boost: 1, useItem: 3, item: 0 };
+          const btnA = !!gp.buttons[faceIdx.accel]?.pressed;
           const rt = !!gp.buttons[7]?.pressed || (gp.buttons[7]?.value ?? 0) > 0.4;
           const lt = !!gp.buttons[6]?.pressed || (gp.buttons[6]?.value ?? 0) > 0.4;
-          const boost = !!gp.buttons[1]?.pressed;
-          const useItem = !!gp.buttons[2]?.pressed;
-          const item = !!gp.buttons[3]?.pressed;
+          const boost = !!gp.buttons[faceIdx.boost]?.pressed;
+          const useItem = !!gp.buttons[faceIdx.useItem]?.pressed;
+          const item = !!gp.buttons[faceIdx.item]?.pressed;
           const start = !!gp.buttons[9]?.pressed;
 
           c.left = dpadLeft || axisX < -GAMEPAD_DEADZONE;
