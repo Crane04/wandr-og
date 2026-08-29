@@ -221,15 +221,16 @@
       const COLLISION_X = 0.24; // lateral radius (road units) at which two karts start touching
       const COLLISION_Z = 260;  // longitudinal radius (world units) — a minimum following gap
       const ITEM_CAP = 6;
-      const ITEM_KINDS = ['boost', 'bomb', 'side', 'swap', 'slow', 'shield', 'banana', 'missile', 'guard'];
-      const ITEM_COLORS = { boost: '#ffd23f', bomb: '#ff5a5a', side: '#ff8a3d', swap: '#c77dff', slow: '#4dd2ff', shield: '#4dff9e', banana: '#d9b429', missile: '#5271ff', guard: '#a64dff' };
+      const ITEM_KINDS = ['boost', 'bomb', 'side', 'swap', 'slow', 'shield', 'banana', 'missile', 'guard', 'repair'];
+      const ITEM_COLORS = { boost: '#ffd23f', bomb: '#ff5a5a', side: '#ff8a3d', swap: '#c77dff', slow: '#4dd2ff', shield: '#4dff9e', banana: '#d9b429', missile: '#5271ff', guard: '#a64dff', repair: '#a8ff4d' };
       // Font Awesome 6 Free Solid glyphs: bolt, bomb, hand-fist, right-left,
-      // snowflake, shield-halved, triangle-exclamation, rocket, shield. Every
-      // ITEM_KINDS entry needs one here — banana shipped without one at
-      // first and fell back to an undecorated dot in the held-item HUD row
-      // (drawItemIcon below), which read as "nothing happened" on pickup.
-      // Missile and guard got the same fix preemptively.
-      const ITEM_ICON_GLYPHS = { boost: '', bomb: '', side: '', swap: '', slow: '', shield: '', banana: '', missile: '', guard: '' };
+      // snowflake, shield-halved, triangle-exclamation, rocket, shield,
+      // wrench. Every ITEM_KINDS entry needs one here — banana shipped
+      // without one at first and fell back to an undecorated dot in the
+      // held-item HUD row (drawItemIcon below), which read as "nothing
+      // happened" on pickup. Missile, guard, and repair got the same fix
+      // preemptively.
+      const ITEM_ICON_GLYPHS = { boost: '', bomb: '', side: '', swap: '', slow: '', shield: '', banana: '', missile: '', guard: '', repair: '' };
       let faReady = false;
       if (document.fonts && document.fonts.load) {
         document.fonts.load('900 32px "Font Awesome 6 Free"').then(() => { faReady = true; }).catch(() => {});
@@ -1087,6 +1088,8 @@
           car.shieldTimer = 10.0; // blocks bomb/side-hit spin-outs, slow, and being swapped
         } else if (kind === 'guard') {
           car.guardTimer = 6.0; // shield's protection, plus reflects bomb/side/slow hits back at the sender
+        } else if (kind === 'repair') {
+          car.damage = Math.max(0, car.damage - 1); // undoes one damage stack — 20% of the 5-stack bar
         } else if (kind === 'banana') {
           // Dropped in place, not thrown — a stationary hazard for whoever's
           // chasing close behind. speed: 0 means updateProjectiles' own sweep
@@ -1303,6 +1306,7 @@
           slow: 1 + rank,
           guard: 1.5 - 0.5 * rank,
           missile: rank < 0.5 ? 0 : (rank - 0.5) * 4,
+          repair: 0.4, // rare regardless of rank — see kind === 'repair' in tryUseItem
         };
         let total = 0;
         for (const k of ITEM_KINDS) total += Math.max(0, weights[k] ?? 1);

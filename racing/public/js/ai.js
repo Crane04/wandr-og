@@ -72,25 +72,74 @@
     };
   }
 
-  // tryUseItem always fires whatever's at car.selectedIndex (AI never
-  // cycles, so that's effectively "the item it's currently holding") — firing
-  // it blind wastes forward-aimed items (bomb/swap/slow) at empty road when
-  // nobody's actually ahead. Only fire those when there's a real target;
-  // side-hit needs someone actually alongside; boost/shield don't need a
-  // target at all.
+  // tryUseItem always fires whatever's at car.selectedIndex, and AI never
+  // cycles that by hand — so it has to *decide* which held item to point
+  // selectedIndex at, not just work through them in pickup order. For each
+  // item this figures out (a) whether it's eligible to use at all right now
+  // (a forward-aimed item needs a real target, a missile is wasted already
+  // in 1st, repair is wasted at full health) and (b) how valuable using it
+  // would actually be in the current situation — then fires the single most
+  // valuable eligible item, not just the first one that happens to roll
+  // lucky. This also incidentally fixes the older bug where a single stuck
+  // front item (no target for a bomb/swap/slow, say) permanently blocked
+  // everything queued behind it: every held item gets considered every
+  // frame regardless of its position in the array.
   function wantsToUseItem(car, allCars, track, difficulty) {
     if (!car.items.length) return false;
-    const kind = car.items[Math.min(car.selectedIndex, car.items.length - 1)];
     const mult = difficulty ? difficulty.itemChanceMultiplier : 1;
     const chance = (p) => Math.min(1, p * mult);
-    if (kind === 'boost' || kind === 'shield' || kind === 'guard') return Math.random() < chance(0.04);
-    // Dropped behind, not aimed — no target needed, just don't spam it.
-    if (kind === 'banana') return Math.random() < chance(0.03);
-    // Locks onto 1st place wherever they are on track — wasted if the AI
-    // using it already *is* 1st, so hold onto it until that's not true.
-    if (kind === 'missile') return car.position > 1 && Math.random() < chance(0.05);
-    if (kind === 'side') return hasTargetBeside(car, allCars) && Math.random() < chance(0.5);
-    return hasTargetAhead(car, allCars, track) && Math.random() < chance(0.5); // bomb / swap / slow
+    const targetAhead = hasTargetAhead(car, allCars, track);
+    const targetBeside = hasTargetBeside(car, allCars);
+    // Someone closing in from behind — the same situation the player's own
+    // "incoming" HUD warning exists for (see index.html) — is when a
+    // defensive item (shield/guard) or a dropped banana is actually worth
+    // using now rather than saving for later.
+    const chased = hasThreatBehind(car, allCars, track);
+
+    let bestIndex = -1, bestValue = -1, bestChance = 0;
+    for (let i = 0; i < car.items.length; i++) {
+      const kind = car.items[i];
+      let eligible = false, value = 0, useChance = 0;
+      if (kind === 'missile') {
+        // Locks onto 1st place wherever they are on track — wasted if the
+        // AI using it already *is* 1st, so hold onto it until that's not
+        // true. Always the single best play when it's live: guaranteed hit
+        // on the race leader from anywhere.
+        eligible = car.position > 1;
+        value = 5; useChance = 0.35;
+      } else if (kind === 'side') {
+        eligible = targetBeside;
+        value = 4; useChance = 0.6;
+      } else if (kind === 'bomb' || kind === 'swap' || kind === 'slow') {
+        eligible = targetAhead;
+        value = 3; useChance = 0.5;
+      } else if (kind === 'shield' || kind === 'guard') {
+        // Worth holding onto until something's actually worth blocking —
+        // otherwise it just burns the timer doing nothing. Small background
+        // chance so it doesn't sit unused forever on a clean run.
+        eligible = true;
+        value = chased ? 4 : 1;
+        useChance = chased ? 0.5 : 0.03;
+      } else if (kind === 'repair') {
+        // Wasted at full health; more urgent the more damage stacked up.
+        eligible = car.damage > 0;
+        value = 2 + car.damage;
+        useChance = 0.15 + car.damage * 0.1;
+      } else if (kind === 'banana') {
+        // Dropped behind, not aimed — no target needed, but it's a much
+        // better play specifically when something's on your tail.
+        eligible = true;
+        value = chased ? 3 : 1;
+        useChance = chased ? 0.4 : 0.03;
+      } else { // boost
+        eligible = true;
+        value = 1; useChance = 0.04;
+      }
+      if (eligible && value > bestValue) { bestValue = value; bestIndex = i; bestChance = useChance; }
+    }
+    if (bestIndex < 0) return false;
+    if (Math.random() < chance(bestChance)) { car.selectedIndex = bestIndex; return true; }
+    return false;
   }
 
   function hasTargetAhead(car, allCars, track) {
@@ -108,6 +157,15 @@
       const dz = Math.abs(other.totalDistance - car.totalDistance);
       const dx = Math.abs(other.x - car.x);
       if (dz < 150 && dx > 0.15 && dx < 0.9) return true;
+    }
+    return false;
+  }
+
+  function hasThreatBehind(car, allCars, track) {
+    for (const other of allCars) {
+      if (other === car || other.finished) continue;
+      const gap = (((car.totalDistance - other.totalDistance) % track.length) + track.length) % track.length;
+      if (gap > 0 && gap < 2200 && Math.abs(other.x - car.x) < 0.6) return true;
     }
     return false;
   }
