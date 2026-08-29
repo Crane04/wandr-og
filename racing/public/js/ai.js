@@ -115,10 +115,16 @@
   // Nudges an AI's effective top speed toward the nearest human's pace so
   // the pack stays competitive without being unbeatable or trivial.
   // difficulty.aiSpeedMultiplier sets the bot's real baseline before that
-  // adjustment; difficulty.rubberbandBand caps how far the adjustment can
-  // still pull it off that baseline — a wide band (low difficulty) keeps a
-  // struggling bot glued near the player even if its baseline is slow, a
-  // narrow one (high difficulty) lets a fast baseline actually pull away.
+  // adjustment. rubberbandEase/rubberbandCatchup then cap how far the
+  // adjustment can pull it off that baseline in each direction separately —
+  // ease when the bot is ahead of the human (positive gap), catchup when
+  // it's behind (negative gap). Kept as two caps rather than one shared
+  // band: forcing a single band to 0 for "never eases off" also disabled
+  // catchup, so a bot that fell behind once — bad corner, hazard, anything —
+  // could never close the gap again and the race was effectively decided by
+  // whichever mistake happened first. Insane wants exactly the asymmetric
+  // version: ease at 0 (a lead is never handed back) but catchup still high
+  // (falling behind gets punished immediately).
   function applyRubberband(car, humanCars, baseMaxSpeed, difficulty) {
     const base = baseMaxSpeed * (difficulty ? difficulty.aiSpeedMultiplier : 1);
     if (!humanCars.length) { car.maxSpeed = base; return; }
@@ -127,8 +133,11 @@
       const gap = car.totalDistance - h.totalDistance;
       if (Math.abs(gap) < Math.abs(nearestGap)) nearestGap = gap;
     }
-    const bandCap = difficulty ? difficulty.rubberbandBand : 0.12;
-    const band = clamp(nearestGap / 4000, -bandCap, bandCap);
+    const easeCap = difficulty ? difficulty.rubberbandEase : 0.12;
+    const catchupCap = difficulty ? difficulty.rubberbandCatchup : 0.12;
+    const band = nearestGap >= 0
+      ? clamp(nearestGap / 4000, 0, easeCap)
+      : -clamp(-nearestGap / 4000, 0, catchupCap);
     car.maxSpeed = base * (1 - band);
   }
 

@@ -246,26 +246,27 @@
 
       // How hard the AI grid races, independent of track/conditions.
       // aiSpeedMultiplier scales the AI's baseline top speed before the
-      // rubberband adjustment below is applied; rubberbandBand caps how much
-      // that adjustment can still pull a bot toward the nearest human's pace
-      // (a wide band means even a fast Insane bot eases off once well ahead,
-      // so lower difficulties lean on a wide band to stay forgiving while
-      // higher ones narrow it so a strong bot actually pulls away). wander
-      // is the amplitude of the bots' per-car steering wobble (see ai.js) —
+      // rubberband adjustment below is applied. rubberbandEase caps how much
+      // a bot can slow down once it's ahead of the nearest human;
+      // rubberbandCatchup caps how much it can speed up once it's behind —
+      // these are deliberately separate, not one shared band: a single
+      // symmetric band at 0 for Insane (the original approach) killed catch
+      // up along with ease-off, so a bot that fell behind once — a bad
+      // corner, a hazard, anything — could never close the gap again and
+      // the run was decided. Insane now sets ease to 0 (never gives back a
+      // lead) while catchup stays high (relentless once behind). wander is
+      // the amplitude of the bots' per-car steering wobble (see ai.js) —
       // lower means a tighter, more precise racing line. brakeThreshold is
       // how sharp a corner has to be before a bot lifts off the throttle at
       // all — higher means it carries speed deeper into corners a cautious
-      // bot would've already braked for.
-      // Rebalanced after the original four tiers played much softer than
-      // their labels suggested — old Hard raced like an easy tier and old
-      // Insane like a fair-fight Normal. Those two slide down to become the
-      // new Easy/Normal (values unchanged), and Hard/Insane above them are
-      // new, genuinely tougher tiers rather than a relabeling.
+      // bot would've already braked for, but pushed too high it just
+      // understeers into the grass instead of actually going faster, so
+      // Hard/Insane lean more on raw aiSpeedMultiplier than on this.
       const DIFFICULTIES = {
-        easy: { name: 'Easy', desc: 'Sharper lines, quicker items — closing a gap takes real pace.', aiSpeedMultiplier: 1.06, rubberbandBand: 0.08, boostChance: 0.05, itemChanceMultiplier: 1.3, wander: 0.1, brakeThreshold: 26 },
-        normal: { name: 'Normal', desc: 'Fast and aggressive — expect a real fight to the line.', aiSpeedMultiplier: 1.12, rubberbandBand: 0.04, boostChance: 0.08, itemChanceMultiplier: 1.6, wander: 0.04, brakeThreshold: 34 },
-        hard: { name: 'Hard', desc: 'Precise and trigger-happy with items — mistakes get punished.', aiSpeedMultiplier: 1.2, rubberbandBand: 0.02, boostChance: 0.11, itemChanceMultiplier: 2.0, wander: 0.015, brakeThreshold: 44 },
-        insane: { name: 'Insane', desc: 'Merciless. Bots run flat out with a hair-trigger on every item.', aiSpeedMultiplier: 1.3, rubberbandBand: 0, boostChance: 0.15, itemChanceMultiplier: 2.5, wander: 0, brakeThreshold: 56 },
+        easy: { name: 'Easy', desc: 'Sharper lines, quicker items — closing a gap takes real pace.', aiSpeedMultiplier: 1.06, rubberbandEase: 0.08, rubberbandCatchup: 0.08, boostChance: 0.05, itemChanceMultiplier: 1.3, wander: 0.1, brakeThreshold: 26 },
+        normal: { name: 'Normal', desc: 'Fast and aggressive — expect a real fight to the line.', aiSpeedMultiplier: 1.12, rubberbandEase: 0.04, rubberbandCatchup: 0.1, boostChance: 0.08, itemChanceMultiplier: 1.6, wander: 0.04, brakeThreshold: 30 },
+        hard: { name: 'Hard', desc: 'Genuinely fast, and it claws back any gap you open up.', aiSpeedMultiplier: 1.28, rubberbandEase: 0.02, rubberbandCatchup: 0.2, boostChance: 0.14, itemChanceMultiplier: 2.2, wander: 0.01, brakeThreshold: 32 },
+        insane: { name: 'Insane', desc: 'Faster than your top speed even without boosting, and a lead never lasts — it will run you down.', aiSpeedMultiplier: 1.45, rubberbandEase: 0, rubberbandCatchup: 0.32, boostChance: 0.2, itemChanceMultiplier: 3.0, wander: 0, brakeThreshold: 38 },
       };
       const DIFFICULTY_LIST = Object.keys(DIFFICULTIES).map((id) => ({ id, name: DIFFICULTIES[id].name, desc: DIFFICULTIES[id].desc }));
       const DEFAULT_DIFFICULTY = 'normal';
