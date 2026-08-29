@@ -22,12 +22,16 @@
         overflow-x: hidden;
       }
       h1, .display-font { font-family: "Bangers", cursive; letter-spacing: 2px; }
-      /* The lobby has grown (track picker + condition picker rows) well past
-         a single screen on most viewports. Flex-centering an oversized child
-         under overflow:hidden clips both ends with no way to reach them —
-         scrolling the body (above) plus top/bottom padding here (instead of
-         vertical centering) is what actually makes all of it reachable. */
-      #lobby { text-align: center; max-width: 560px; width: 100%; padding: 32px 16px 130px; }
+      /* Wide enough to use most of the viewport instead of sitting in a
+         narrow fixed column — the step wizard only ever shows one picker
+         row at a time now, so the extra width mostly means fewer of that
+         row's cards need the horizontal scroll from .track-select below.
+         Flex-centering an oversized child under overflow:hidden clips both
+         ends with no way to reach them — scrolling the body (above) plus
+         top/bottom padding here (instead of vertical centering) is what
+         makes all of it reachable if it's ever still taller than the
+         viewport. */
+      #lobby { text-align: center; width: 90vw; max-width: 1200px; padding: 32px 16px 130px; }
       #lobby h1 { font-size: 52px; color: #ffd23f; text-shadow: 0 0 18px rgba(255,178,0,.55), 3px 3px 0 #d1420c; margin-bottom: 6px; }
       #lobby p { color: #bcd0ff; }
       #roomCode { font-size: 44px; letter-spacing: 8px; color: #7fffa0; margin: 12px 0; font-family: "Bangers", cursive; text-shadow: 0 0 12px rgba(120,255,150,.6); }
@@ -65,9 +69,12 @@
       .slot { width: 42px; height: 30px; border-radius: 6px; background: #1c2338; border: 2px solid #3a4568; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #66708f; }
       .slot.human.joined { border-color: #fff; color: #08130a; box-shadow: 0 0 10px rgba(255,255,255,.5); }
 
-      .track-select { display: flex; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+      /* A single left-to-right scrolling row instead of wrapping into a
+         multi-row grid — cards read as one filmstrip of choices you swipe
+         through, not a block of options to scan all at once. */
+      .track-select { display: flex; gap: 10px; margin-top: 18px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; justify-content: safe center; }
       .track-card {
-        width: 148px; padding: 10px 12px; border-radius: 10px;
+        width: 148px; flex-shrink: 0; padding: 10px 12px; border-radius: 10px;
         background: #141a2e; border: 2px solid #3a4568; cursor: pointer;
         text-align: left; transition: border-color .15s, background .15s;
       }
@@ -101,7 +108,9 @@
          picking track/conditions/difficulty no longer means scrolling past
          the others first — Back/Next (below) step through them in place. */
       #stepNav { margin-top: 20px; }
-      #stepLabel { color: #8fa0c9; font-weight: 700; font-size: 13px; min-width: 88px; }
+      #stepDots { display: inline-flex; gap: 7px; min-width: 44px; justify-content: center; }
+      #stepDots span { width: 8px; height: 8px; border-radius: 50%; background: #3a4568; }
+      #stepDots span.active { background: #ffd23f; }
       #stepBackBtn, #stepNextBtn { background: #1a2f66; color: #cfe1ff; border: 1px solid #5689e8; box-shadow: none; padding: 10px 22px; }
       #menuBtn { background: #1a2f66; color: #cfe1ff; border: 1px solid #5689e8; box-shadow: none; }
       #quitBtn { background: #4a1a1a; color: #ffd6d6; border: 1px solid #a04040; }
@@ -127,22 +136,22 @@
 
       <div id="lobbySteps">
         <div class="lobby-step" data-step="0">
-          <div class="section-label">1. Pick a track <span class="hint">— tap a card to choose</span></div>
+          <div class="section-label">1. Pick a track</div>
           <div id="trackSelect" class="track-select"></div>
         </div>
         <div class="lobby-step" data-step="1" hidden>
-          <div class="section-label">2. Race conditions <span class="hint">— tap a card to choose</span></div>
+          <div class="section-label">2. Race conditions</div>
           <div id="conditionSelect" class="track-select"></div>
         </div>
         <div class="lobby-step" data-step="2" hidden>
-          <div class="section-label">3. Difficulty <span class="hint">— tap a card to choose</span></div>
+          <div class="section-label">3. Difficulty</div>
           <div id="difficultySelect" class="track-select"></div>
         </div>
       </div>
 
       <div id="stepNav" class="actions">
         <button id="stepBackBtn" disabled>Back</button>
-        <span id="stepLabel">Step 1 of 3</span>
+        <span id="stepDots"></span>
         <button id="stepNextBtn">Next</button>
       </div>
     </div>
@@ -199,18 +208,28 @@
       const OFFROAD_MAX_SPEED = MAX_SPEED / 4;
       const CENTRIFUGAL = 0.2; // was 0.3 — eased so holding a drift line fights the player less
       const BOOST_MULTIPLIER = 1.35;
+      // Persistent damage: every real hit (bomb/banana/missile/side-hit/slow
+      // — anything that goes through spinOut or the slow branch below, see
+      // both) adds a stack that knocks a flat percentage off top speed for
+      // the *rest of the race*, on top of that hit's own momentary effect.
+      // Unlike shield/guard/slowTimer this never times out or gets reset
+      // until the next race — getting hit repeatedly is meant to actually
+      // cost you the way it would in a real crash, not just cause a
+      // one-second inconvenience each time.
+      const MAX_DAMAGE_STACKS = 5;
+      const DAMAGE_SPEED_PENALTY_PER_STACK = 0.08; // 8% off top speed per stack, 40% at the cap
       const COLLISION_X = 0.24; // lateral radius (road units) at which two karts start touching
       const COLLISION_Z = 260;  // longitudinal radius (world units) — a minimum following gap
       const ITEM_CAP = 6;
-      const ITEM_KINDS = ['boost', 'bomb', 'side', 'swap', 'slow', 'shield', 'banana', 'missile', 'star'];
-      const ITEM_COLORS = { boost: '#ffd23f', bomb: '#ff5a5a', side: '#ff8a3d', swap: '#c77dff', slow: '#4dd2ff', shield: '#4dff9e', banana: '#d9b429', missile: '#5271ff', star: '#ffe97a' };
+      const ITEM_KINDS = ['boost', 'bomb', 'side', 'swap', 'slow', 'shield', 'banana', 'missile', 'guard'];
+      const ITEM_COLORS = { boost: '#ffd23f', bomb: '#ff5a5a', side: '#ff8a3d', swap: '#c77dff', slow: '#4dd2ff', shield: '#4dff9e', banana: '#d9b429', missile: '#5271ff', guard: '#a64dff' };
       // Font Awesome 6 Free Solid glyphs: bolt, bomb, hand-fist, right-left,
-      // snowflake, shield-halved, triangle-exclamation, rocket, star. Every
-      // ITEM_KINDS entry needs one here — banana and star both shipped
-      // without one at first and fell back to an undecorated dot in the
-      // held-item HUD row (drawItemIcon below), which read as "nothing
-      // happened" on pickup. Missile got the same fix preemptively.
-      const ITEM_ICON_GLYPHS = { boost: '', bomb: '', side: '', swap: '', slow: '', shield: '', banana: '', missile: '', star: '' };
+      // snowflake, shield-halved, triangle-exclamation, rocket, shield. Every
+      // ITEM_KINDS entry needs one here — banana shipped without one at
+      // first and fell back to an undecorated dot in the held-item HUD row
+      // (drawItemIcon below), which read as "nothing happened" on pickup.
+      // Missile and guard got the same fix preemptively.
+      const ITEM_ICON_GLYPHS = { boost: '', bomb: '', side: '', swap: '', slow: '', shield: '', banana: '', missile: '', guard: '' };
       let faReady = false;
       if (document.fonts && document.fonts.load) {
         document.fonts.load('900 32px "Font Awesome 6 Free"').then(() => { faReady = true; }).catch(() => {});
@@ -278,7 +297,7 @@
         // "very hard" but mathematically unwinnable. This keeps it as the
         // tier meant to be lost most of the time, with a real (if narrow)
         // window for a clean run to sneak past.
-        insane: { name: 'Insane', desc: 'Brutal. It out-paces you most of the time — only a clean, well-boosted run stands a chance.', aiSpeedMultiplier: 1.3, rubberbandEase: 0, rubberbandCatchup: 0.22, boostChance: 0.16, itemChanceMultiplier: 2.4, wander: 0, brakeThreshold: 90 },
+        insane: { name: 'Impossible', desc: 'Brutal. It out-paces you most of the time — only a clean, well-boosted run stands a chance.', aiSpeedMultiplier: 1.3, rubberbandEase: 0, rubberbandCatchup: 0.22, boostChance: 0.16, itemChanceMultiplier: 2.4, wander: 0, brakeThreshold: 90 },
       };
       const DIFFICULTY_LIST = Object.keys(DIFFICULTIES).map((id) => ({ id, name: DIFFICULTIES[id].name, desc: DIFFICULTIES[id].desc }));
       const DEFAULT_DIFFICULTY = 'normal';
@@ -651,41 +670,26 @@
         c.restore();
       }
 
-      // Star: a rotating ring of colored sparkles plus a soft golden glow —
-      // deliberately busier/brighter than the shield bubble so "invincible
-      // and dangerous to touch" reads differently from "just blocking hits".
-      function drawStarAura(c, s, car) {
-        const t = performance.now();
-        const fadeOut = car.starTimer < 1.0 ? car.starTimer / 1.0 : 1; // flicker out in the last 1s
+      // Guard: like the shield bubble but purple, plus an outward-pulsing
+      // ring to read as "deflecting" rather than just "blocking" — visually
+      // distinct from the plain shield since guard also sends the hit back
+      // at whoever sent it (see the projectile-hit and useSideHit code).
+      function drawGuardAura(c, s, car) {
+        const pulse = 0.75 + 0.25 * Math.sin(performance.now() * 0.006);
+        const fadeOut = car.guardTimer < 1.5 ? car.guardTimer / 1.5 : 1; // flicker out in the last 1.5s
         c.save();
-        c.globalAlpha = 0.5 * fadeOut;
-        const glow = c.createRadialGradient(0, -s * 0.5, 0, 0, -s * 0.5, s * 1.3);
-        glow.addColorStop(0, 'rgba(255,235,150,.6)');
-        glow.addColorStop(1, 'rgba(255,235,150,0)');
-        c.fillStyle = glow;
-        c.beginPath(); c.arc(0, -s * 0.5, s * 1.3, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = 0.28 * pulse * fadeOut;
+        c.fillStyle = ITEM_COLORS.guard;
+        c.beginPath(); c.ellipse(0, -s * 0.55, s * 1.15, s * 1.35, 0, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = 0.65 * pulse * fadeOut;
+        c.strokeStyle = ITEM_COLORS.guard;
+        c.lineWidth = Math.max(1, s * 0.05);
+        c.beginPath(); c.ellipse(0, -s * 0.55, s * 1.15, s * 1.35, 0, 0, Math.PI * 2); c.stroke();
+        const ringPulse = (performance.now() * 0.0015) % 1;
+        c.globalAlpha = (1 - ringPulse) * 0.5 * fadeOut;
+        c.lineWidth = Math.max(1, s * 0.04);
+        c.beginPath(); c.ellipse(0, -s * 0.55, s * (1.15 + ringPulse * 0.5), s * (1.35 + ringPulse * 0.5), 0, 0, Math.PI * 2); c.stroke();
         c.restore();
-
-        const sparkColors = ['#ff5a5a', '#ffd23f', '#4dff9e', '#4dd2ff', '#c77dff'];
-        const n = sparkColors.length;
-        for (let i = 0; i < n; i++) {
-          const ang = t * 0.003 + (i / n) * Math.PI * 2;
-          const r = s * 1.05;
-          const px = Math.cos(ang) * r;
-          const py = -s * 0.55 + Math.sin(ang) * r * 0.35;
-          const sz = s * 0.09;
-          c.save();
-          c.globalAlpha = fadeOut;
-          c.fillStyle = sparkColors[i];
-          c.beginPath();
-          c.moveTo(px, py - sz); c.lineTo(px + sz * 0.3, py - sz * 0.3);
-          c.lineTo(px + sz, py); c.lineTo(px + sz * 0.3, py + sz * 0.3);
-          c.lineTo(px, py + sz); c.lineTo(px - sz * 0.3, py + sz * 0.3);
-          c.lineTo(px - sz, py); c.lineTo(px - sz * 0.3, py - sz * 0.3);
-          c.closePath();
-          c.fill();
-          c.restore();
-        }
       }
 
       function drawNameLabel(c, s, car) {
@@ -703,14 +707,37 @@
         c.restore();
       }
 
+      // A small health bar above every kart (not just your own HUD) so
+      // accumulated damage — see MAX_DAMAGE_STACKS/spinOut — is something
+      // you can size up on opponents too, not just feel on your own car.
+      // Sits above the name label, always visible (full/green at 0 damage)
+      // rather than only appearing once hurt, same as a boss health bar.
+      function drawDamageBar(c, s, car) {
+        if (s < 14) return; // same too-small-to-read cutoff as the name label
+        const pct = 1 - Math.min(MAX_DAMAGE_STACKS, car.damage) / MAX_DAMAGE_STACKS;
+        const barW = s * 0.85, barH = Math.max(2, s * 0.09);
+        const y = -s * (car.items.length ? 2.35 : 2.0);
+        c.save();
+        c.fillStyle = 'rgba(0,0,0,.55)';
+        c.fillRect(-barW / 2 - 1, y - barH / 2 - 1, barW + 2, barH + 2);
+        c.fillStyle = 'rgba(255,255,255,.15)';
+        c.fillRect(-barW / 2, y - barH / 2, barW, barH);
+        if (pct > 0) {
+          c.fillStyle = `hsl(${Math.round(pct * 120)}, 85%, 55%)`; // 120=green .. 0=red
+          c.fillRect(-barW / 2, y - barH / 2, barW * pct, barH);
+        }
+        c.restore();
+      }
+
       function drawKart(c, s, car) {
         if (car.holeTimer > 0) { drawHoleAnimation(c, s, car); return; }
         const sprite = KartSprite.get(car.color);
         if (sprite) drawKartSpriteImage(c, s, car, sprite);
         else drawKartShape(c, s, car);
         if (car.shieldTimer > 0) drawShieldBubble(c, s, car);
-        if (car.starTimer > 0) drawStarAura(c, s, car);
+        if (car.guardTimer > 0) drawGuardAura(c, s, car);
         drawItemRow(c, s, car);
+        drawDamageBar(c, s, car);
         drawNameLabel(c, s, car);
       }
 
@@ -945,7 +972,7 @@
           x: opts.startX, totalDistance: opts.startZ,
           speed: 0, maxSpeed: MAX_SPEED,
           boostCharge: 0, boosting: false, boostTimer: 0, superBoostTimer: 0,
-          items: [], selectedIndex: 0, spinTimer: 0, slowTimer: 0, shieldTimer: 0, starTimer: 0, holeTimer: 0, holeEscapeZ: 0, boostPadCooldown: 0,
+          items: [], selectedIndex: 0, spinTimer: 0, slowTimer: 0, shieldTimer: 0, guardTimer: 0, damage: 0, holeTimer: 0, holeEscapeZ: 0, boostPadCooldown: 0,
           shortcutCooldown: 0, jumpCooldown: 0, airTimer: 0,
           laps: 0, lapStart: 0, bestLap: Infinity,
           finished: false, finishTime: 0, position: 1,
@@ -1010,15 +1037,17 @@
         }
       }
 
-      // Shield and star both block incoming bomb/side/slow/swap effects —
-      // star additionally lets its holder spin out anyone *they* touch
-      // (see resolveCollisions), which shield does not.
-      function isProtected(car) { return car.shieldTimer > 0 || car.starTimer > 0; }
+      // Shield and guard both block incoming bomb/side/slow/swap effects —
+      // guard additionally sends bomb/side/slow hits back at whoever sent
+      // them instead of just absorbing them (see the projectile-hit loop
+      // and useSideHit below), which shield does not.
+      function isProtected(car) { return car.shieldTimer > 0 || car.guardTimer > 0; }
 
       function spinOut(car) {
         if (isProtected(car)) return;
         car.spinTimer = 1.1;
         car.speed *= 0.25;
+        car.damage = Math.min(MAX_DAMAGE_STACKS, car.damage + 1);
       }
 
       // Instant, non-thrown: spins out anyone currently alongside the user
@@ -1029,7 +1058,12 @@
           if (other === car || other.finished || other.spinTimer > 0) continue;
           const dz = Math.abs(other.totalDistance - car.totalDistance);
           const dx = Math.abs(other.x - car.x);
-          if (dz < 150 && dx > 0.15 && dx < 0.9) spinOut(other);
+          if (dz < 150 && dx > 0.15 && dx < 0.9) {
+            // Guard sends this back at whoever used it instead of just
+            // blocking — same reflect behavior as the thrown items above.
+            if (other.guardTimer > 0) spinOut(car);
+            else spinOut(other);
+          }
         }
       }
 
@@ -1051,8 +1085,8 @@
           useSideHit(car);
         } else if (kind === 'shield') {
           car.shieldTimer = 10.0; // blocks bomb/side-hit spin-outs, slow, and being swapped
-        } else if (kind === 'star') {
-          car.starTimer = 6.0; // shield's protection, plus spins out anyone you touch
+        } else if (kind === 'guard') {
+          car.guardTimer = 6.0; // shield's protection, plus reflects bomb/side/slow hits back at the sender
         } else if (kind === 'banana') {
           // Dropped in place, not thrown — a stationary hazard for whoever's
           // chasing close behind. speed: 0 means updateProjectiles' own sweep
@@ -1169,7 +1203,7 @@
         if (car.superBoostTimer > 0) car.superBoostTimer = Math.max(0, car.superBoostTimer - dt);
         if (car.slowTimer > 0) car.slowTimer = Math.max(0, car.slowTimer - dt);
         if (car.shieldTimer > 0) car.shieldTimer = Math.max(0, car.shieldTimer - dt);
-        if (car.starTimer > 0) car.starTimer = Math.max(0, car.starTimer - dt);
+        if (car.guardTimer > 0) car.guardTimer = Math.max(0, car.guardTimer - dt);
         if (car.airTimer > 0) {
           car.airTimer = Math.max(0, car.airTimer - dt);
           if (car.airTimer === 0) triggerBoost(car, 1.2); // landing boost — the reward for timing a jump
@@ -1181,10 +1215,15 @@
 
         // Penalties (offroad, grease, the slow-item debuff) cap effective top
         // speed even mid-boost — a boost shouldn't cancel out a hazard.
-        const cap = offroad ? OFFROAD_MAX_SPEED
+        // Accumulated damage knocks a flat percentage off whatever cap
+        // would otherwise apply — off-road, boosting, or normal — so it
+        // stays a real, lasting handicap rather than something a boost or
+        // getting back on the road cancels out.
+        const damageMultiplier = 1 - Math.min(MAX_DAMAGE_STACKS, car.damage) * DAMAGE_SPEED_PENALTY_PER_STACK;
+        const cap = (offroad ? OFFROAD_MAX_SPEED
           : inGrease ? car.maxSpeed * 0.45
           : car.slowTimer > 0 ? car.maxSpeed * 0.55
-          : (car.boosting ? car.maxSpeed * BOOST_MULTIPLIER : car.maxSpeed);
+          : (car.boosting ? car.maxSpeed * BOOST_MULTIPLIER : car.maxSpeed)) * damageMultiplier;
         car.speed = clamp(car.speed, 0, cap * activeConditions.speedMultiplier);
         car.x = clamp(car.x, -1.6, 1.6);
 
@@ -1262,7 +1301,7 @@
           side: 1 + rank,
           swap: 1,
           slow: 1 + rank,
-          star: 0.3 + 1.2 * rank,
+          guard: 1.5 - 0.5 * rank,
           missile: rank < 0.5 ? 0 : (rank - 0.5) * 4,
         };
         let total = 0;
@@ -1300,9 +1339,18 @@
       // view, they approach from directly behind. The chase-cam only ever
       // looks forward, so there's no way to actually see one coming in the
       // 3D scene; this is a HUD-only warning so the player gets *some*
-      // signal before it hits (distance still gives a moment to swerve,
-      // since the hit check has an x-lane tolerance).
-      const THREAT_WARNING_RANGE = 2200;
+      // signal before it hits.
+      //
+      // Keyed off time-to-impact rather than a fixed distance: a projectile
+      // travels at the thrower's current speed plus a flat +11000 (see
+      // tryUseItem), so a fixed distance threshold gives wildly different
+      // amounts of actual warning time depending on how fast the thrower
+      // was going — at AI speeds this session has pushed well past 20000,
+      // a fixed 2200-unit range gave well under a quarter second of warning,
+      // not enough to register let alone react to. A fixed time threshold
+      // stays meaningful regardless of how fast anything involved gets
+      // tuned later.
+      const THREAT_WARNING_TIME = 1.1; // seconds of warning before impact
       function findIncomingThreat(car) {
         let closest = null;
         for (const p of projectiles) {
@@ -1310,8 +1358,11 @@
           if (p.kind !== 'bomb' && p.kind !== 'slow' && p.kind !== 'swap' && p.kind !== 'missile') continue;
           if (p.kind === 'missile' && p.targetId !== car.id) continue; // locked on — only its target gets the warning
           const behindDist = car.totalDistance - p.z; // positive = still behind car, closing in
-          if (behindDist > 0 && behindDist < THREAT_WARNING_RANGE && Math.abs(car.x - p.x) < 0.6) {
-            if (!closest || behindDist < closest.dist) closest = { kind: p.kind, dist: behindDist };
+          const closingSpeed = p.speed - car.speed; // how fast the gap is actually shrinking
+          if (behindDist <= 0 || closingSpeed <= 0 || Math.abs(car.x - p.x) >= 0.6) continue;
+          const timeToImpact = behindDist / closingSpeed;
+          if (timeToImpact < THREAT_WARNING_TIME && (!closest || timeToImpact < closest.timeToImpact)) {
+            closest = { kind: p.kind, timeToImpact };
           }
         }
         return closest;
@@ -1319,7 +1370,7 @@
 
       function drawThreatWarning(left, top, w, h, threat) {
         if (!threat) return;
-        const urgency = 1 - clamp(threat.dist / THREAT_WARNING_RANGE, 0, 1); // 0 far .. 1 about to hit
+        const urgency = 1 - clamp(threat.timeToImpact / THREAT_WARNING_TIME, 0, 1); // 0 far .. 1 about to hit
         const pulse = 0.5 + 0.5 * Math.sin(performance.now() * (0.012 + urgency * 0.02));
         const color = ITEM_COLORS[threat.kind] || '#ff3b3b';
         const barH = 16 + urgency * 34;
@@ -1397,12 +1448,22 @@
             const carMax = Math.max(carPrevZ, car.totalDistance);
             const overlaps = carMax >= zMin && carMin <= zMax;
             if (overlaps && Math.abs(car.x - p.x) < 0.4) {
+              // Guard sends bomb/banana/missile/slow back at whoever threw
+              // it instead of just absorbing it — swap has no equivalent
+              // "send back" (the thrower already ends up wherever the
+              // target was), so guard just blocks it there like shield does.
+              const thrower = cars.find((c) => c.id === p.ownerId);
+              const reflect = car.guardTimer > 0 && thrower && !thrower.finished;
+              const victim = reflect ? thrower : car;
               if (p.kind === 'bomb' || p.kind === 'banana' || p.kind === 'missile') {
-                spinOut(car); // spinOut itself is shield/star-aware
+                spinOut(victim); // spinOut itself is shield/guard-aware
               } else if (p.kind === 'slow') {
-                if (!isProtected(car)) { car.slowTimer = 2.5; car.speed *= 0.6; }
+                if (!isProtected(victim)) {
+                  victim.slowTimer = 2.5;
+                  victim.speed *= 0.6;
+                  victim.damage = Math.min(MAX_DAMAGE_STACKS, victim.damage + 1);
+                }
               } else if (p.kind === 'swap' && !isProtected(car)) {
-                const thrower = cars.find((c) => c.id === p.ownerId);
                 if (thrower) {
                   const tz = thrower.totalDistance, tx = thrower.x;
                   thrower.totalDistance = car.totalDistance; thrower.x = car.x;
@@ -1410,8 +1471,9 @@
                 }
               }
               // The projectile still "hits" (and is consumed) even when
-              // shield/star blocks the effect — it bounces off rather than
-              // sailing through to hit whoever's behind the protected car.
+              // shield/guard blocks or reflects the effect — it bounces off
+              // rather than sailing through to hit whoever's behind the
+              // protected car.
               p.hit = true;
               break;
             }
@@ -1461,12 +1523,6 @@
             b.totalDistance += zPush * dir;
             // Extra speed bleed for whichever kart is doing the ramming.
             if (dir > 0) a.speed *= 0.9; else b.speed *= 0.9;
-
-            // Star: touching another kart spins them out (shield only
-            // blocks incoming effects, it doesn't do this) — skip when both
-            // are starred so they don't just spin each other every frame.
-            if (a.starTimer > 0 && !(b.starTimer > 0)) spinOut(b);
-            else if (b.starTimer > 0 && !(a.starTimer > 0)) spinOut(a);
 
             // Only push apart laterally when there's an actual lateral
             // offset — a straight-behind kart (dx≈0) isn't a side-by-side
@@ -1621,7 +1677,7 @@
         ctx.restore();
         ctx.strokeStyle = 'rgba(255,255,255,.18)';
         ctx.strokeRect(left, top, w, h);
-        Render.drawHudPanel(ctx, left, top, w, h, car, TARGET_LAPS);
+        Render.drawHudPanel(ctx, left, top, w, h, car, TARGET_LAPS, MAX_DAMAGE_STACKS);
         if (!isProtected(car)) drawThreatWarning(left, top, w, h, findIncomingThreat(car));
       }
 
@@ -1954,7 +2010,13 @@
         });
         document.getElementById('stepBackBtn').disabled = lobbyStep === 0;
         document.getElementById('stepNextBtn').hidden = lobbyStep === LOBBY_STEP_COUNT - 1;
-        document.getElementById('stepLabel').textContent = `Step ${lobbyStep + 1} of ${LOBBY_STEP_COUNT}`;
+        const dots = document.getElementById('stepDots');
+        dots.innerHTML = '';
+        for (let i = 0; i < LOBBY_STEP_COUNT; i++) {
+          const dot = document.createElement('span');
+          if (i === lobbyStep) dot.className = 'active';
+          dots.appendChild(dot);
+        }
       }
       document.getElementById('stepBackBtn').addEventListener('click', () => {
         lobbyStep = Math.max(0, lobbyStep - 1);

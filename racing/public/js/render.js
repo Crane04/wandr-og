@@ -254,12 +254,13 @@
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
   }
 
-  function drawHudPanel(ctx, left, top, width, height, car, targetLaps) {
+  function drawHudPanel(ctx, left, top, width, height, car, targetLaps, maxDamage) {
+    maxDamage = maxDamage || 5;
     ctx.save();
     ctx.fillStyle = 'rgba(10,8,20,.6)';
     ctx.strokeStyle = 'rgba(255,255,255,.25)';
     ctx.lineWidth = 2;
-    roundRect(ctx, left + 14, top + 14, 168, 96, 10);
+    roundRect(ctx, left + 14, top + 14, 168, 116, 10);
     ctx.fill();
     ctx.stroke();
 
@@ -303,6 +304,20 @@
       ctx.textAlign = 'center';
       ctx.fillText(`x${car.items.length}`, left + 148, top + 24);
       ctx.textAlign = 'left';
+    }
+
+    // Damage pips — dim when empty, red when taken — so a persistent
+    // speed penalty from repeated hits (see index.html's spinOut/slow
+    // handling) has a visible cause instead of the car just feeling like
+    // it got worse for no reason. Always drawn (not just when damaged) so
+    // the panel doesn't change size/layout the moment the first hit lands.
+    const dmg = car.damage || 0;
+    const pipY = top + 104, pipR = 4, pipGap = 13;
+    for (let i = 0; i < maxDamage; i++) {
+      ctx.beginPath();
+      ctx.arc(left + 30 + i * pipGap, pipY, pipR, 0, Math.PI * 2);
+      ctx.fillStyle = i < dmg ? '#ff4a4a' : 'rgba(255,255,255,.15)';
+      ctx.fill();
     }
     ctx.restore();
   }

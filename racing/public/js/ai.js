@@ -83,7 +83,7 @@
     const kind = car.items[Math.min(car.selectedIndex, car.items.length - 1)];
     const mult = difficulty ? difficulty.itemChanceMultiplier : 1;
     const chance = (p) => Math.min(1, p * mult);
-    if (kind === 'boost' || kind === 'shield' || kind === 'star') return Math.random() < chance(0.04);
+    if (kind === 'boost' || kind === 'shield' || kind === 'guard') return Math.random() < chance(0.04);
     // Dropped behind, not aimed — no target needed, just don't spam it.
     if (kind === 'banana') return Math.random() < chance(0.03);
     // Locks onto 1st place wherever they are on track — wasted if the AI
