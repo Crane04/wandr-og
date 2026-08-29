@@ -257,16 +257,21 @@
       // lead) while catchup stays high (relentless once behind). wander is
       // the amplitude of the bots' per-car steering wobble (see ai.js) —
       // lower means a tighter, more precise racing line. brakeThreshold is
-      // how sharp a corner has to be before a bot lifts off the throttle at
-      // all — higher means it carries speed deeper into corners a cautious
-      // bot would've already braked for, but pushed too high it just
-      // understeers into the grass instead of actually going faster, so
-      // Hard/Insane lean more on raw aiSpeedMultiplier than on this.
+      // how sharp a corner has to be before a bot brakes for it at all —
+      // and it matters far more than aiSpeedMultiplier in practice, because
+      // BRAKE_DECEL is 5x ACCEL: every unnecessary brake event costs several
+      // seconds of recovery back to cruising speed, which swamps a higher
+      // top-speed cap the bot then barely gets to use. A prior version of
+      // this pulled the threshold *down* for Hard/Insane on the theory that
+      // it reduced crash risk — backwards, since a lower threshold flags
+      // more corners as "sharp" and triggers braking more often. Hard/Insane
+      // now push it way up instead, so bots rely on grip and steering
+      // through ordinary corners and only brake for genuinely extreme ones.
       const DIFFICULTIES = {
         easy: { name: 'Easy', desc: 'Sharper lines, quicker items — closing a gap takes real pace.', aiSpeedMultiplier: 1.06, rubberbandEase: 0.08, rubberbandCatchup: 0.08, boostChance: 0.05, itemChanceMultiplier: 1.3, wander: 0.1, brakeThreshold: 26 },
         normal: { name: 'Normal', desc: 'Fast and aggressive — expect a real fight to the line.', aiSpeedMultiplier: 1.12, rubberbandEase: 0.04, rubberbandCatchup: 0.1, boostChance: 0.08, itemChanceMultiplier: 1.6, wander: 0.04, brakeThreshold: 30 },
-        hard: { name: 'Hard', desc: 'Genuinely fast, and it claws back any gap you open up.', aiSpeedMultiplier: 1.28, rubberbandEase: 0.02, rubberbandCatchup: 0.2, boostChance: 0.14, itemChanceMultiplier: 2.2, wander: 0.01, brakeThreshold: 32 },
-        insane: { name: 'Insane', desc: 'Faster than your top speed even without boosting, and a lead never lasts — it will run you down.', aiSpeedMultiplier: 1.45, rubberbandEase: 0, rubberbandCatchup: 0.32, boostChance: 0.2, itemChanceMultiplier: 3.0, wander: 0, brakeThreshold: 38 },
+        hard: { name: 'Hard', desc: 'Genuinely fast, and it claws back any gap you open up.', aiSpeedMultiplier: 1.28, rubberbandEase: 0.02, rubberbandCatchup: 0.2, boostChance: 0.14, itemChanceMultiplier: 2.2, wander: 0.01, brakeThreshold: 55 },
+        insane: { name: 'Insane', desc: 'Faster than your top speed even without boosting, and a lead never lasts — it will run you down.', aiSpeedMultiplier: 1.45, rubberbandEase: 0, rubberbandCatchup: 0.32, boostChance: 0.2, itemChanceMultiplier: 3.0, wander: 0, brakeThreshold: 90 },
       };
       const DIFFICULTY_LIST = Object.keys(DIFFICULTIES).map((id) => ({ id, name: DIFFICULTIES[id].name, desc: DIFFICULTIES[id].desc }));
       const DEFAULT_DIFFICULTY = 'normal';

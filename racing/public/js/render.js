@@ -356,10 +356,21 @@
 
     cars.forEach((car) => {
       const t = ((car.totalDistance % track.length) + track.length) % track.length / track.length;
-      const idx = Math.min(track.polyline.length - 1, Math.floor(t * track.polyline.length));
-      const p = track.polyline[idx];
-      const px = x + 10 + p.u * (w - 20);
-      const py = y + 10 + p.v * (h - 20);
+      // Interpolated between the two nearest sampled points instead of
+      // snapping to whichever is closest — polyline only has one point
+      // every 4 segments, so snapping made the dot visibly hop between
+      // sample points rather than glide, most noticeably right around the
+      // start/finish point every lap (see track.js's polyline comment).
+      const n = track.polyline.length;
+      const posF = t * n;
+      const i0 = Math.floor(posF) % n;
+      const i1 = (i0 + 1) % n;
+      const frac = posF - Math.floor(posF);
+      const a = track.polyline[i0], b = track.polyline[i1];
+      const u = a.u + (b.u - a.u) * frac;
+      const v = a.v + (b.v - a.v) * frac;
+      const px = x + 10 + u * (w - 20);
+      const py = y + 10 + v * (h - 20);
       ctx.beginPath();
       ctx.arc(px, py, humanIds.has(car.id) ? 4.5 : 3, 0, Math.PI * 2);
       ctx.fillStyle = car.color;

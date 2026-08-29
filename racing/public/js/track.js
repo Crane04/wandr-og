@@ -189,11 +189,20 @@
     let px = 0, py = 0;
     const polyline = [{ x: 0, y: 0 }];
     const step = 4; // sample every 4 segments for a light polyline
+    // Pushing on `i % step === 0` sampled at i=0 too — after only 1 segment
+    // of movement instead of a full 4 — so the first interval was a quarter
+    // the length of every other one. The minimap dot (drawMinimap, keyed
+    // off distance assuming uniform spacing) reads that as if 4 segments of
+    // real progress mapped onto that short first hop and the next real hop
+    // starting from it, i.e. everything downstream is out of registration
+    // with the actual segment it should show. Sampling on `(i+1) % step`
+    // instead means every interval (including the first) is a full `step`
+    // segments.
     for (let i = 0; i < segments.length; i++) {
       heading += segments[i].curve * normalizer * 0.02;
       px += Math.cos(heading);
       py += Math.sin(heading);
-      if (i % step === 0) polyline.push({ x: px, y: py });
+      if ((i + 1) % step === 0) polyline.push({ x: px, y: py });
     }
     // The heading normalizer above only guarantees the total turning sums to
     // a full 2*PI revolution — for asymmetric layouts (uneven mixes of
