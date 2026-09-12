@@ -25,3 +25,12 @@ services:
       - "127.0.0.1:3010:3010"
     environment:
       - PORT=3010
+
+  last-block:
+    build: ./last-block
+    container_name: wandr-last-block
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3011:3011"
+    environment:
+      - PORT=3011

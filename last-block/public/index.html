@@ -1,0 +1,2994 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Last Block</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+      /* Self-hosted — not on Google Fonts. Licensed personal-use-only
+         (1001Fonts Free For Personal Use License); used here on the
+         explicit understanding that's acceptable for this project. */
+      @font-face {
+        font-family: "Namistre";
+        src: url("fonts/Namistre.ttf") format("truetype");
+        font-display: swap;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background:
+          radial-gradient(ellipse 70% 50% at 50% 0%, rgba(255, 90, 40, 0.14), transparent 65%),
+          radial-gradient(circle at 50% 100%, #2a1210 0%, #140807 55%, #060302 100%);
+        color: #f3e9df;
+        font-family: "Rajdhani", "Trebuchet MS", "Courier New", sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 24px;
+        position: relative;
+        overflow-x: hidden;
+      }
+      /* Faint scanlines behind the lobby card — cheap way to read as a HUD
+         readout rather than a plain web form, without loading any image
+         assets. */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(255, 255, 255, 0.02) 0px,
+          rgba(255, 255, 255, 0.02) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+        pointer-events: none;
+      }
+      #lobby {
+        width: min(92vw, 430px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 14px;
+        padding: 38px 28px 30px;
+        position: relative;
+        background: linear-gradient(180deg, rgba(35, 14, 12, 0.8), rgba(14, 6, 5, 0.88));
+        border: 1px solid rgba(255, 120, 60, 0.25);
+        box-shadow: 0 0 70px rgba(255, 70, 20, 0.16), inset 0 0 50px rgba(0, 0, 0, 0.5);
+      }
+      /* Corner brackets, like a targeting reticle framing the card. */
+      #lobby::before,
+      #lobby::after {
+        content: "";
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        border-style: solid;
+        border-color: #ff6a3d;
+        border-width: 0;
+      }
+      #lobby::before {
+        top: -1px;
+        left: -1px;
+        border-top-width: 3px;
+        border-left-width: 3px;
+      }
+      #lobby::after {
+        bottom: -1px;
+        right: -1px;
+        border-bottom-width: 3px;
+        border-right-width: 3px;
+      }
+      #lobby h1 {
+        width: 100%;
+        font-family: "Namistre", "Bebas Neue", sans-serif;
+        font-size: clamp(42px, 11vw, 62px);
+        line-height: 1;
+        letter-spacing: 4px;
+        margin: 0;
+        color: #fff;
+        text-shadow:
+          0 0 18px rgba(255, 90, 30, 0.85),
+          0 0 42px rgba(255, 40, 10, 0.45),
+          2px 2px 0 #000;
+      }
+      #lobby p {
+        width: 100%;
+        color: #dcb8a6;
+        font-size: 15px;
+        font-weight: 500;
+        line-height: 1.45;
+        margin: 0;
+      }
+      #roomCode {
+        width: 100%;
+        font-family: "Namistre", "Bebas Neue", monospace;
+        font-size: clamp(38px, 10vw, 50px);
+        line-height: 1;
+        letter-spacing: 10px;
+        color: #ffb347;
+        text-shadow: 0 0 14px rgba(255, 150, 50, 0.7);
+        margin: 4px 0 0 10px;
+      }
+      #qrcode {
+        background: #fff;
+        padding: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 2px;
+        border: 3px solid #ff6a3d;
+        box-shadow: 0 0 20px rgba(255, 90, 30, 0.35);
+        line-height: 0;
+      }
+      #playerStatus {
+        width: 100%;
+        min-height: 36px;
+        margin: 0;
+        padding: 8px 12px;
+        border-radius: 2px;
+        background: rgba(130, 25, 20, 0.4);
+        border: 1px solid rgba(255, 90, 40, 0.4);
+        color: #ffcdb8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        font-size: 13px;
+        animation: pulseWarn 1.6s ease-in-out infinite;
+      }
+      @keyframes pulseWarn {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.55;
+        }
+      }
+      #playerStatus.ready {
+        background: rgba(30, 120, 55, 0.35);
+        border-color: rgba(90, 255, 140, 0.5);
+        color: #c8ffd8;
+        animation: none;
+      }
+      #startBtn {
+        width: 100%;
+        margin: 4px 0 0;
+        padding: 15px 28px;
+        font-family: "Namistre", "Bebas Neue", sans-serif;
+        font-size: 24px;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        background: linear-gradient(180deg, #ff7a3d, #d92e1e);
+        color: #fff;
+        border: none;
+        border-radius: 2px;
+        cursor: pointer;
+        box-shadow: 0 4px 0 #8a1a10, 0 0 26px rgba(255, 80, 30, 0.5);
+        transition: transform 0.1s, box-shadow 0.1s;
+      }
+      #startBtn:active {
+        transform: translateY(3px);
+        box-shadow: 0 1px 0 #8a1a10, 0 0 26px rgba(255, 80, 30, 0.5);
+      }
+      #startBtn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+      #gameWrap {
+        display: none;
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 20;
+      }
+      #gameWrap canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #webgl {
+        background: #f4f1e8;
+      }
+      #game {
+        background: transparent;
+      }
+      #gameOverOverlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(circle at 50% 40%, rgba(70, 14, 12, 0.97), rgba(6, 3, 2, 0.99));
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        z-index: 30;
+        color: #ff6a4a;
+      }
+      #gameOverOverlay h2 {
+        font-family: "Namistre", "Bebas Neue", sans-serif;
+        font-size: 58px;
+        letter-spacing: 3px;
+        text-shadow: 0 0 26px rgba(255, 60, 30, 0.7);
+      }
+      #gameOverOverlay button {
+        padding: 13px 30px;
+        font-family: "Namistre", "Bebas Neue", sans-serif;
+        font-size: 20px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        background: linear-gradient(180deg, #ff7a3d, #d92e1e);
+        color: #fff;
+        border: none;
+        border-radius: 2px;
+        cursor: pointer;
+        box-shadow: 0 4px 0 #8a1a10;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="lobby">
+      <h1>Last Block</h1>
+      <p>Scan with your phone to become the gunner — grapple, gear up, and hold the line against endless waves of enemies.</p>
+      <div id="roomCode">----</div>
+      <div id="qrcode"></div>
+      <div id="playerStatus">Waiting for player...</div>
+      <button id="startBtn" disabled>Deploy</button>
+    </div>
+
+    <div id="gameWrap">
+      <canvas id="webgl"></canvas>
+      <canvas id="game"></canvas>
+    </div>
+
+    <div id="gameOverOverlay">
+      <h2 id="finalMsg"></h2>
+      <button onclick="location.reload()">Play Again</button>
+    </div>
+
+    <script>
+      const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${wsProtocol}//${location.host}`);
+      let roomCode = null;
+      let playerConnected = false;
+
+      const gameParams = new URLSearchParams(location.search);
+      const requestedId = (
+        gameParams.get("id") ||
+        localStorage.getItem("lastBlockGameId") ||
+        ""
+      ).toUpperCase();
+      let gameId = /^[A-Z2-9]{4}$/.test(requestedId) ? requestedId : null;
+
+      ws.onopen = () =>
+        ws.send(JSON.stringify({ type: "host-create", hostId: gameId }));
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "room-created") {
+          roomCode = msg.room;
+          gameId = msg.room;
+          localStorage.setItem("lastBlockGameId", gameId);
+          gameParams.set("id", gameId);
+          history.replaceState(null, "", `${location.pathname}?${gameParams}`);
+          document.getElementById("roomCode").textContent = roomCode;
+          const joinUrl = `${location.protocol}//${location.host}/controller.html?room=${roomCode}`;
+          new QRCode(document.getElementById("qrcode"), {
+            text: joinUrl,
+            width: 150,
+            height: 150,
+          });
+        }
+        if (msg.type === "player-joined") {
+          playerConnected = true;
+          document.getElementById("playerStatus").textContent =
+            "Player connected ✅";
+          document.getElementById("playerStatus").classList.add("ready");
+          document.getElementById("startBtn").disabled = false;
+        }
+        if (msg.type === "player-left") {
+          playerConnected = false;
+          document.getElementById("playerStatus").textContent =
+            "Player disconnected";
+          document.getElementById("playerStatus").classList.remove("ready");
+          document.getElementById("startBtn").disabled = true;
+        }
+        if (msg.type === "input") {
+          input.lastReceived = Date.now();
+          if (msg.joystick) input.move = msg.joystick;
+          if (msg.look) {
+            input.look.dx += msg.look.dx;
+            input.look.dy += msg.look.dy;
+          }
+          if (msg.action === "shoot") input.shoot = msg.state === "down";
+          if (msg.action === "aim") input.aim = msg.state === "down";
+          if (msg.action === "reload" && msg.state === "down")
+            input.reloadPressed = true;
+          if (msg.action === "weapon" && msg.state === "down")
+            input.weaponPressed = true;
+          if (msg.action === "start" && msg.state === "down")
+            input.startPresses++;
+          if (msg.action === "grapple") input.grapple = msg.state === "down";
+          if (msg.action === "reset") resetInputState();
+        }
+      };
+
+      const input = {
+        move: { x: 0, y: 0 },
+        look: { dx: 0, dy: 0 },
+        shoot: false,
+        aim: false,
+        reloadPressed: false,
+        weaponPressed: false,
+        startPresses: 0,
+        grapple: false,
+        lastReceived: Date.now(),
+      };
+
+      function resetInputState() {
+        input.move = { x: 0, y: 0 };
+        input.look.dx = 0;
+        input.look.dy = 0;
+        input.shoot = false;
+        input.aim = false;
+        input.grapple = false;
+        input.reloadPressed = false;
+        input.weaponPressed = false;
+      }
+
+      // ---------- Canvas / doodle helpers (screen-space HUD overlay) ----------
+      const gameWrap = document.getElementById("gameWrap");
+      const webglCanvas = document.getElementById("webgl");
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      let W = window.innerWidth,
+        H = window.innerHeight;
+      // HUD ink stays readable over the bright sky, grass, and building faces.
+      const INK = "#14283b";
+      // Dramatic HUD accent palette — orange/red, matching the lobby's ember
+      // theme — used for panel backgrounds and headline text so the HUD and
+      // pause screen read as a tactical readout, without touching the
+      // bright comic-book look of the 3D world itself (that stays as-is).
+      const HUD_ACCENT = "#ff6a3d";
+      const HUD_DANGER = "#ff3b3b";
+      const HUD_DARK = "rgba(12, 6, 5, 0.86)";
+      // Canvas text doesn't wait for a web font the way DOM text does — draw
+      // calls made before Namistre finishes loading would silently fall back
+      // to the browser default and then never re-render, so gate on this the
+      // same way the game already gates faReady-style icon fonts elsewhere.
+      let namistreReady = false;
+      if (document.fonts && document.fonts.load) {
+        document.fonts
+          .load('900 32px "Namistre"')
+          .then(() => {
+            namistreReady = true;
+          })
+          .catch(() => {});
+      }
+      function hudFont(px, weight = "bold") {
+        return namistreReady
+          ? `${weight} ${px}px "Namistre", monospace`
+          : `${weight} ${px}px monospace`;
+      }
+      function glowText(text, x, y, color, blur) {
+        ctx.save();
+        ctx.shadowColor = color;
+        ctx.shadowBlur = blur;
+        ctx.fillStyle = color;
+        ctx.fillText(text, x, y);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+
+      function jitter(v, amt) {
+        return v + (Math.random() - 0.5) * amt;
+      }
+
+      function sketchLineColor(
+        x1,
+        y1,
+        x2,
+        y2,
+        color,
+        passes = 2,
+        jitterAmt = 1.5,
+      ) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.4;
+        for (let i = 0; i < passes; i++) {
+          ctx.beginPath();
+          ctx.moveTo(jitter(x1, jitterAmt), jitter(y1, jitterAmt));
+          ctx.lineTo(jitter(x2, jitterAmt), jitter(y2, jitterAmt));
+          ctx.stroke();
+        }
+      }
+
+      function sketchLine(x1, y1, x2, y2, passes = 2, jitterAmt = 1.5) {
+        sketchLineColor(x1, y1, x2, y2, INK, passes, jitterAmt);
+      }
+
+      function sketchCircle(cx, cy, r, passes = 2) {
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.4;
+        for (let i = 0; i < passes; i++) {
+          ctx.beginPath();
+          ctx.ellipse(
+            jitter(cx, 1.2),
+            jitter(cy, 1.2),
+            r + jitter(0, 1),
+            r + jitter(0, 1),
+            0,
+            0,
+            Math.PI * 2,
+          );
+          ctx.stroke();
+        }
+      }
+
+      // ---------- Three.js world ----------
+      const WORLD_SCALE = 0.05; // keeps the original px-based pacing formulas, at sane 3D-world-unit scale
+      const PLAYER_RADIUS = 1.2;
+      const EYE_HEIGHT = 1.7;
+      const MELEE_RADIUS = 40 * WORLD_SCALE;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x8ec9e8);
+      scene.fog = new THREE.Fog(0x8ec9e8, 72, 190);
+      const camera = new THREE.PerspectiveCamera(75, W / H, 0.1, 500);
+      camera.rotation.order = "YXZ";
+      scene.add(camera); // camera must be in the scene graph for its child (the gun viewmodel) to render
+      const renderer = new THREE.WebGLRenderer({
+        canvas: webglCanvas,
+        antialias: true,
+      });
+      renderer.setSize(W, H, false);
+      renderer.setClearColor(0x8ec9e8, 1);
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      const raycaster = new THREE.Raycaster();
+      scene.add(new THREE.HemisphereLight(0xdff4ff, 0x38533a, 1.4));
+      const sunLight = new THREE.DirectionalLight(0xfff0bd, 1.1);
+      sunLight.position.set(-45, 75, -35);
+      scene.add(sunLight);
+
+      function resizeGame() {
+        W = window.innerWidth;
+        H = window.innerHeight;
+        canvas.width = W;
+        canvas.height = H;
+        renderer.setSize(W, H, false);
+        camera.aspect = W / H;
+        camera.updateProjectionMatrix();
+      }
+      window.addEventListener("resize", () => {
+        if (running) resizeGame();
+      });
+
+      // Host-side fallback: lets whoever holds the keyboard un-stick a pause even if the
+      // phone controller is the one that's disconnected or unresponsive.
+      window.addEventListener("keydown", (e) => {
+        if ((e.key === "p" || e.key === "P" || e.key === "Escape") && running)
+          paused = !paused;
+      });
+
+      // ---------- Sound (synthesized — no audio assets to ship) ----------
+      let audioCtx = null;
+      function ensureAudio() {
+        if (!audioCtx) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          audioCtx = new Ctx();
+        }
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        return audioCtx;
+      }
+
+      function noiseBuffer(ctx, duration) {
+        const buffer = ctx.createBuffer(
+          1,
+          Math.max(1, Math.floor(ctx.sampleRate * duration)),
+          ctx.sampleRate,
+        );
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        return buffer;
+      }
+
+      const WEAPON_SOUND = {
+        RIFLE: { freq: 1500, duration: 0.09, volume: 0.28, decay: 0.07 },
+        SHOTGUN: { freq: 900, duration: 0.18, volume: 0.45, decay: 0.14 },
+        SNIPER: { freq: 1800, duration: 0.22, volume: 0.5, decay: 0.2 },
+      };
+
+      function playShotSound(weaponName) {
+        const { freq, duration, volume, decay } =
+          WEAPON_SOUND[weaponName] || WEAPON_SOUND.RIFLE;
+        const ctx = ensureAudio();
+        const now = ctx.currentTime;
+
+        // filtered noise burst reads as the crack of the shot
+        const noise = ctx.createBufferSource();
+        noise.buffer = noiseBuffer(ctx, duration);
+        const bandpass = ctx.createBiquadFilter();
+        bandpass.type = "bandpass";
+        bandpass.frequency.value = freq;
+        bandpass.Q.value = 0.8;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(volume, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + decay);
+        noise.connect(bandpass).connect(noiseGain).connect(ctx.destination);
+        noise.start(now);
+        noise.stop(now + duration);
+
+        // a low, fast-decaying thump gives the shot some body
+        const osc = ctx.createOscillator();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq * 0.15, now);
+        osc.frequency.exponentialRampToValueAtTime(
+          Math.max(30, freq * 0.05),
+          now + decay,
+        );
+        const oscGain = ctx.createGain();
+        oscGain.gain.setValueAtTime(volume * 0.6, now);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, now + decay);
+        osc.connect(oscGain).connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + decay);
+      }
+
+      function playSlashSound() {
+        const ctx = ensureAudio();
+        const now = ctx.currentTime;
+        const noise = ctx.createBufferSource();
+        noise.buffer = noiseBuffer(ctx, 0.15);
+        const hp = ctx.createBiquadFilter();
+        hp.type = "highpass";
+        hp.frequency.setValueAtTime(2500, now);
+        hp.frequency.exponentialRampToValueAtTime(700, now + 0.15);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        noise.connect(hp).connect(gain).connect(ctx.destination);
+        noise.start(now);
+        noise.stop(now + 0.15);
+      }
+
+      function playEnemyDeathSound() {
+        const ctx = ensureAudio();
+        const now = ctx.currentTime;
+
+        // a falling growl for the "hit" reaction
+        const osc = ctx.createOscillator();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(60, now + 0.35);
+        const oscGain = ctx.createGain();
+        oscGain.gain.setValueAtTime(0.32, now);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        osc.connect(oscGain).connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.4);
+
+        // a soft thud for the body hitting the ground
+        const noise = ctx.createBufferSource();
+        noise.buffer = noiseBuffer(ctx, 0.2);
+        const lp = ctx.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = 500;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.25, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        noise.connect(lp).connect(noiseGain).connect(ctx.destination);
+        noise.start(now);
+        noise.stop(now + 0.2);
+      }
+
+      function jitterGeometry(geo, amt) {
+        const pos = geo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          pos.setXYZ(
+            i,
+            pos.getX(i) + (Math.random() - 0.5) * amt,
+            pos.getY(i) + (Math.random() - 0.5) * amt,
+            pos.getZ(i) + (Math.random() - 0.5) * amt,
+          );
+        }
+        pos.needsUpdate = true;
+      }
+
+      const inkLineMat = new THREE.LineBasicMaterial({ color: 0x21334d });
+      const enemyLineMat = new THREE.LineBasicMaterial({ color: 0x6e1821 });
+
+      function makeHatchTexture() {
+        const c = document.createElement("canvas");
+        c.width = 128;
+        c.height = 128;
+        const hctx = c.getContext("2d");
+        hctx.fillStyle = "#f4f1e8";
+        hctx.fillRect(0, 0, 128, 128);
+        hctx.strokeStyle = "rgba(34,51,170,0.35)";
+        hctx.lineWidth = 2;
+        for (let i = -128; i < 128; i += 10) {
+          hctx.beginPath();
+          hctx.moveTo(i, 0);
+          hctx.lineTo(i + 128, 128);
+          hctx.stroke();
+        }
+        const tex = new THREE.CanvasTexture(c);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        return tex;
+      }
+      const hatchBaseTexture = makeHatchTexture();
+
+      function makeGroundTexture() {
+        const c = document.createElement("canvas");
+        c.width = 256;
+        c.height = 256;
+        const gctx = c.getContext("2d");
+        gctx.fillStyle = "#5f9a67";
+        gctx.fillRect(0, 0, 256, 256);
+        gctx.fillStyle = "rgba(40,100,55,0.18)";
+        for (let i = 0; i < 160; i++) {
+          gctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+        }
+        const tex = new THREE.CanvasTexture(c);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(20, 20);
+        return tex;
+      }
+
+      const groundMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(400, 400),
+        new THREE.MeshLambertMaterial({ map: makeGroundTexture() }),
+      );
+      groundMesh.rotation.x = -Math.PI / 2;
+      scene.add(groundMesh);
+
+      const buildingColliders = [];
+      const buildingMeshes = []; // grapple-hook raycast targets
+      const buildingRoofs = []; // rooftop footprints enemies can spawn on and descend from
+      const buildingAccess = []; // ladders are physical navigation links between street and roof
+      const shootableCrates = [];
+
+      // horizontal floor-division lines + window mullions, so buildings read as
+      // multi-story structures instead of plain boxes
+      function addBuildingDetail(mesh, w, h, d) {
+        const floorH = 4.2;
+        const floors = Math.max(2, Math.round(h / floorH));
+        const hw = w / 2,
+          hd = d / 2;
+        const pts = [];
+        for (let f = 1; f < floors; f++) {
+          const y = -h / 2 + f * (h / floors);
+          pts.push(new THREE.Vector3(-hw, y, hd), new THREE.Vector3(hw, y, hd));
+          pts.push(
+            new THREE.Vector3(-hw, y, -hd),
+            new THREE.Vector3(hw, y, -hd),
+          );
+          pts.push(
+            new THREE.Vector3(-hw, y, -hd),
+            new THREE.Vector3(-hw, y, hd),
+          );
+          pts.push(new THREE.Vector3(hw, y, -hd), new THREE.Vector3(hw, y, hd));
+        }
+        const cols = Math.max(2, Math.round(w / 3));
+        for (let f = 0; f < floors; f++) {
+          const y0 = -h / 2 + f * (h / floors) + (h / floors) * 0.22;
+          const y1 = -h / 2 + f * (h / floors) + (h / floors) * 0.78;
+          for (let c = 1; c < cols; c++) {
+            const x = -hw + (c / cols) * w;
+            pts.push(
+              new THREE.Vector3(x, y0, hd),
+              new THREE.Vector3(x, y1, hd),
+            );
+            pts.push(
+              new THREE.Vector3(x, y0, -hd),
+              new THREE.Vector3(x, y1, -hd),
+            );
+          }
+        }
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        jitterGeometry(geo, 0.04);
+        mesh.add(new THREE.LineSegments(geo, inkLineMat));
+
+        // Recessed paper-blue window bays give the skyline a crisp, constructed silhouette.
+        const windowMat = new THREE.MeshBasicMaterial({
+          color: 0xdce5f7,
+          transparent: true,
+          opacity: 0.72,
+          side: THREE.DoubleSide,
+        });
+        for (let f = 0; f < floors; f++) {
+          const wy = -h / 2 + (f + 0.5) * (h / floors);
+          for (let c = 0; c < cols; c++) {
+            const ww = (w / cols) * 0.58;
+            const wh = (h / floors) * 0.42;
+            const wx = -hw + (c + 0.5) * (w / cols);
+            for (const z of [hd + 0.012, -hd - 0.012]) {
+              const pane = new THREE.Mesh(
+                new THREE.PlaneGeometry(ww, wh),
+                windowMat,
+              );
+              pane.position.set(wx, wy, z);
+              mesh.add(pane);
+              const frame = new THREE.EdgesGeometry(
+                new THREE.PlaneGeometry(ww, wh),
+              );
+              pane.add(new THREE.LineSegments(frame, inkLineMat));
+            }
+          }
+        }
+      }
+
+      // a low parapet lip around the roof edge, marking it as a ledge enemies stand on
+      function addRoofParapet(mesh, w, h, d) {
+        const lip = 0.5;
+        const geo = new THREE.BoxGeometry(w + 0.3, lip, d + 0.3);
+        const wire = new THREE.EdgesGeometry(geo);
+        jitterGeometry(wire, 0.04);
+        const ring = new THREE.LineSegments(wire, inkLineMat);
+        ring.position.y = h / 2 + lip / 2;
+        mesh.add(ring);
+      }
+
+      function createBuilding(def) {
+        const geo = new THREE.BoxGeometry(def.w, def.h, def.d);
+        const palette = [0xe5b878, 0xcfd9e6, 0xd9957d, 0xb8c6a6];
+        const mesh = new THREE.Mesh(
+          geo,
+          new THREE.MeshLambertMaterial({
+            color:
+              def.color || palette[Math.floor(Math.random() * palette.length)],
+          }),
+        );
+        mesh.position.set(def.x, def.h / 2, def.z);
+        scene.add(mesh);
+        buildingMeshes.push(mesh);
+
+        const edges = new THREE.EdgesGeometry(geo);
+        jitterGeometry(edges, 0.06);
+        mesh.add(new THREE.LineSegments(edges, inkLineMat));
+        addBuildingDetail(mesh, def.w, def.h, def.d);
+        addRoofParapet(mesh, def.w, def.h, def.d);
+
+        const bounds = {
+          minX: def.x - def.w / 2,
+          maxX: def.x + def.w / 2,
+          minZ: def.z - def.d / 2,
+          maxZ: def.z + def.d / 2,
+        };
+        buildingColliders.push(bounds);
+        const access = {
+          // Keep the ladder just outside the facade so it is reachable without walking through the wall.
+          x: def.x + def.w / 2 + 0.72,
+          z: def.z + def.d * 0.24,
+          h: def.h,
+          roofX: def.x + def.w / 2 - 0.72,
+          roofZ: def.z + def.d * 0.24,
+        };
+        buildingRoofs.push({ x: def.x, z: def.z, h: def.h, access, ...bounds });
+        buildingAccess.push(access);
+        createAccessLadder(access);
+      }
+      [
+        { x: -35, z: -35, w: 16, h: 26, d: 16 },
+        { x: 35, z: -35, w: 18, h: 32, d: 16 },
+        { x: -35, z: 35, w: 18, h: 22, d: 18 },
+        { x: 35, z: 35, w: 16, h: 30, d: 16 },
+        { x: -50, z: 0, w: 14, h: 20, d: 14 },
+        { x: 50, z: 0, w: 14, h: 36, d: 14 },
+        { x: 0, z: -55, w: 20, h: 24, d: 16 },
+        { x: 0, z: 55, w: 20, h: 28, d: 16 },
+      ].forEach(createBuilding);
+
+      // Ladders make every roof a usable part of the level instead of decorative scenery.
+      function createAccessLadder(access) {
+        const pts = [];
+        const railGap = 0.62;
+        for (const side of [-1, 1]) {
+          pts.push(
+            new THREE.Vector3(access.x, 0, access.z + (side * railGap) / 2),
+          );
+          pts.push(
+            new THREE.Vector3(
+              access.x,
+              access.h + 0.5,
+              access.z + (side * railGap) / 2,
+            ),
+          );
+        }
+        for (let y = 0.5; y < access.h; y += 1.25) {
+          pts.push(new THREE.Vector3(access.x, y, access.z - railGap / 2));
+          pts.push(new THREE.Vector3(access.x, y, access.z + railGap / 2));
+        }
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        jitterGeometry(geo, 0.025);
+        scene.add(new THREE.LineSegments(geo, inkLineMat));
+      }
+
+      // ---------- Props: crates, scaffolding, crane, sky dome ----------
+      function createCrate(x, z, size) {
+        const geo = new THREE.BoxGeometry(size, size, size);
+        const mesh = new THREE.Mesh(
+          geo,
+          new THREE.MeshLambertMaterial({ color: 0x9a673f }),
+        );
+        mesh.position.set(x, size / 2, z);
+        scene.add(mesh);
+        buildingMeshes.push(mesh);
+
+        const edges = new THREE.EdgesGeometry(geo);
+        jitterGeometry(edges, 0.04);
+        mesh.add(new THREE.LineSegments(edges, inkLineMat));
+
+        const collider = {
+          minX: x - size / 2,
+          maxX: x + size / 2,
+          minZ: z - size / 2,
+          maxZ: z + size / 2,
+        };
+        buildingColliders.push(collider);
+        const crate = { mesh, collider, broken: false };
+        mesh.userData.crateRef = crate;
+        shootableCrates.push(mesh);
+      }
+      [
+        { x: -12, z: 8, size: 2.4 },
+        { x: -9, z: 10, size: 1.8 },
+        { x: 14, z: -10, size: 2.2 },
+        { x: 10, z: -13, size: 1.6 },
+        { x: 6, z: 18, size: 2 },
+      ].forEach((c) => createCrate(c.x, c.z, c.size));
+
+      function breakCrate(crate) {
+        if (!crate || crate.broken) return;
+        crate.broken = true;
+        scene.remove(crate.mesh);
+        const meshIndex = buildingMeshes.indexOf(crate.mesh);
+        if (meshIndex >= 0) buildingMeshes.splice(meshIndex, 1);
+        const targetIndex = shootableCrates.indexOf(crate.mesh);
+        if (targetIndex >= 0) shootableCrates.splice(targetIndex, 1);
+        const colliderIndex = buildingColliders.indexOf(crate.collider);
+        if (colliderIndex >= 0) buildingColliders.splice(colliderIndex, 1);
+      }
+
+      // Ground props register a movement collider (kept separate from buildingMeshes
+      // so they don't also become grapple targets or block bullet sightlines) — without
+      // this, players and enemies alike would walk straight through them.
+      function addGroundCollider(x, z, halfW, halfD, rotation = 0) {
+        const alongZ = Math.abs(Math.sin(rotation)) > 0.5;
+        buildingColliders.push(
+          alongZ
+            ? {
+                minX: x - halfD,
+                maxX: x + halfD,
+                minZ: z - halfW,
+                maxZ: z + halfW,
+              }
+            : {
+                minX: x - halfW,
+                maxX: x + halfW,
+                minZ: z - halfD,
+                maxZ: z + halfD,
+              },
+        );
+      }
+
+      function createScaffold(x, z, w, h, d, rows) {
+        const pts = [];
+        for (let cx = 0; cx <= 1; cx++) {
+          for (let cz = 0; cz <= 1; cz++) {
+            const px = x + (cx - 0.5) * w,
+              pz = z + (cz - 0.5) * d;
+            pts.push(
+              new THREE.Vector3(px, 0, pz),
+              new THREE.Vector3(px, h, pz),
+            );
+          }
+        }
+        for (let r = 0; r < rows; r++) {
+          const y = (r / (rows - 1)) * h;
+          const corners = [
+            [x - w / 2, z - d / 2],
+            [x + w / 2, z - d / 2],
+            [x + w / 2, z + d / 2],
+            [x - w / 2, z + d / 2],
+            [x - w / 2, z - d / 2],
+          ];
+          for (let i = 0; i < corners.length - 1; i++) {
+            pts.push(
+              new THREE.Vector3(corners[i][0], y, corners[i][1]),
+              new THREE.Vector3(corners[i + 1][0], y, corners[i + 1][1]),
+            );
+          }
+        }
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        jitterGeometry(geo, 0.05);
+        scene.add(new THREE.LineSegments(geo, inkLineMat));
+        addGroundCollider(x, z, w / 2, d / 2);
+      }
+      createScaffold(20, 20, 8, 16, 8, 5);
+
+      function createCrane(x, z) {
+        const mastH = 55,
+          mastSize = 2.2,
+          jibLen = 40;
+        const mastGeo = new THREE.BoxGeometry(mastSize, mastH, mastSize);
+        const mast = new THREE.Mesh(
+          mastGeo,
+          new THREE.MeshLambertMaterial({ color: 0xf2ae38 }),
+        );
+        mast.position.set(x, mastH / 2, z);
+        scene.add(mast);
+        buildingMeshes.push(mast);
+        const medges = new THREE.EdgesGeometry(mastGeo);
+        jitterGeometry(medges, 0.05);
+        mast.add(new THREE.LineSegments(medges, inkLineMat));
+        buildingColliders.push({
+          minX: x - mastSize / 2,
+          maxX: x + mastSize / 2,
+          minZ: z - mastSize / 2,
+          maxZ: z + mastSize / 2,
+        });
+
+        const pts = [];
+        pts.push(
+          new THREE.Vector3(x, mastH, z),
+          new THREE.Vector3(x + jibLen, mastH, z),
+        );
+        pts.push(
+          new THREE.Vector3(x, mastH, z),
+          new THREE.Vector3(x - 12, mastH, z),
+        );
+        pts.push(
+          new THREE.Vector3(x, mastH + 8, z),
+          new THREE.Vector3(x + jibLen, mastH, z),
+        );
+        pts.push(
+          new THREE.Vector3(x, mastH + 8, z),
+          new THREE.Vector3(x - 12, mastH, z),
+        );
+        pts.push(
+          new THREE.Vector3(x, mastH, z),
+          new THREE.Vector3(x, mastH + 8, z),
+        );
+        const hookX = x + jibLen * 0.75,
+          hookY = mastH - 18;
+        pts.push(
+          new THREE.Vector3(hookX, mastH, z),
+          new THREE.Vector3(hookX, hookY, z),
+        );
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+        jitterGeometry(lineGeo, 0.08);
+        scene.add(new THREE.LineSegments(lineGeo, inkLineMat));
+
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(1.1, 1.5, 12),
+          new THREE.MeshBasicMaterial({
+            color: 0xcc7a00,
+            side: THREE.DoubleSide,
+          }),
+        );
+        ring.position.set(hookX, hookY - 1.4, z);
+        scene.add(ring);
+      }
+      createCrane(55, -55);
+
+      function createTree(x, z, scale = 1) {
+        const tree = new THREE.Group();
+        const trunk = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.22 * scale, 0.3 * scale, 2.2 * scale, 6),
+          new THREE.MeshLambertMaterial({ color: 0x76503a }),
+        );
+        trunk.position.y = 1.1 * scale;
+        const crown = new THREE.Mesh(
+          new THREE.ConeGeometry(1.25 * scale, 3.1 * scale, 7),
+          new THREE.MeshLambertMaterial({ color: 0x3e8056 }),
+        );
+        crown.position.y = 3.05 * scale;
+        tree.add(trunk, crown);
+        tree.position.set(x, 0, z);
+        scene.add(tree);
+        addGroundCollider(x, z, 0.35 * scale, 0.35 * scale);
+      }
+      [
+        [-72, -48, 1.15],
+        [-72, 34, 0.9],
+        [69, 48, 1.05],
+        [64, 18, 0.8],
+        [-20, -78, 1],
+        [28, 76, 1.1],
+        [-61, 63, 0.85],
+        [75, -18, 0.9],
+      ].forEach((t) => createTree(...t));
+
+      function createBench(x, z, rotation = 0) {
+        const bench = new THREE.Group();
+        const wood = new THREE.MeshLambertMaterial({ color: 0x8c5d3d });
+        const metal = new THREE.MeshLambertMaterial({ color: 0x38485a });
+        const seat = new THREE.Mesh(
+          new THREE.BoxGeometry(2.4, 0.16, 0.48),
+          wood,
+        );
+        seat.position.y = 0.72;
+        const back = new THREE.Mesh(
+          new THREE.BoxGeometry(2.4, 0.55, 0.13),
+          wood,
+        );
+        back.position.set(0, 1.05, 0.2);
+        bench.add(seat, back);
+        for (const side of [-0.85, 0.85]) {
+          const leg = new THREE.Mesh(
+            new THREE.BoxGeometry(0.12, 0.7, 0.38),
+            metal,
+          );
+          leg.position.set(side, 0.35, 0);
+          bench.add(leg);
+        }
+        bench.position.set(x, 0, z);
+        bench.rotation.y = rotation;
+        scene.add(bench);
+        addGroundCollider(x, z, 1.3, 0.45, rotation);
+      }
+
+      function createStreetLight(x, z) {
+        const lamp = new THREE.Group();
+        const poleMat = new THREE.MeshLambertMaterial({ color: 0x344657 });
+        const pole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.1, 0.14, 5.2, 8),
+          poleMat,
+        );
+        pole.position.y = 2.6;
+        const cap = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.42, 0.28, 0.25, 8),
+          new THREE.MeshBasicMaterial({ color: 0xffdf79 }),
+        );
+        cap.position.y = 5.1;
+        lamp.add(pole, cap);
+        lamp.position.set(x, 0, z);
+        scene.add(lamp);
+        addGroundCollider(x, z, 0.3, 0.3);
+      }
+
+      function createRock(x, z, scale = 1) {
+        const rock = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(scale, 0),
+          new THREE.MeshLambertMaterial({ color: 0x7c8a85 }),
+        );
+        rock.scale.set(1.15, 0.7, 0.9);
+        rock.position.set(x, scale * 0.45, z);
+        rock.rotation.set(Math.random(), Math.random(), Math.random());
+        scene.add(rock);
+        addGroundCollider(x, z, scale * 1.2, scale * 1.0);
+      }
+
+      function createFence(x, z, length, rotation = 0) {
+        const fence = new THREE.Group();
+        const mat = new THREE.MeshLambertMaterial({ color: 0xe9e1ce });
+        for (let i = 0; i < 3; i++) {
+          const rail = new THREE.Mesh(
+            new THREE.BoxGeometry(length, 0.1, 0.1),
+            mat,
+          );
+          rail.position.y = 0.65 + i * 0.42;
+          fence.add(rail);
+        }
+        for (const px of [-length / 2, 0, length / 2]) {
+          const post = new THREE.Mesh(
+            new THREE.BoxGeometry(0.12, 1.6, 0.12),
+            mat,
+          );
+          post.position.set(px, 0.8, 0);
+          fence.add(post);
+        }
+        fence.position.set(x, 0, z);
+        fence.rotation.y = rotation;
+        scene.add(fence);
+        addGroundCollider(x, z, length / 2 + 0.2, 0.4, rotation);
+      }
+
+      [
+        [-12, -20, 0.15],
+        [18, 17, -0.7],
+        [-20, 20, 1.5],
+      ].forEach((b) => createBench(...b));
+      [
+        [-16, -12],
+        [15, 12],
+        [0, 28],
+        [27, -18],
+      ].forEach((l) => createStreetLight(...l));
+      [
+        [-7, -30, 1.4],
+        [27, 29, 1.1],
+        [-27, 11, 0.85],
+        [9, 36, 1.2],
+      ].forEach((r) => createRock(...r));
+      createFence(-5, -24, 9, 0.12);
+      createFence(25, 25, 8, Math.PI / 2);
+
+      function createSkyDome() {
+        const radius = 260;
+        const meridians = 16,
+          meridianSteps = 10,
+          rings = 4,
+          ringSegs = 48;
+        const pts = [];
+        for (let i = 0; i < meridians; i++) {
+          const theta = (i / meridians) * Math.PI * 2;
+          let prev = new THREE.Vector3(0, radius, 0);
+          for (let s = 1; s <= meridianSteps; s++) {
+            const phi = (s / meridianSteps) * (Math.PI / 2);
+            const y = Math.cos(phi) * radius,
+              r = Math.sin(phi) * radius;
+            const pt = new THREE.Vector3(
+              Math.cos(theta) * r,
+              y,
+              Math.sin(theta) * r,
+            );
+            pts.push(prev.clone(), pt.clone());
+            prev = pt;
+          }
+        }
+        for (let ringIdx = 1; ringIdx <= rings; ringIdx++) {
+          const phi = (ringIdx / (rings + 1)) * (Math.PI / 2);
+          const y = Math.cos(phi) * radius,
+            r = Math.sin(phi) * radius;
+          let prev = null;
+          for (let s = 0; s <= ringSegs; s++) {
+            const theta = (s / ringSegs) * Math.PI * 2;
+            const pt = new THREE.Vector3(
+              Math.cos(theta) * r,
+              y,
+              Math.sin(theta) * r,
+            );
+            if (prev) pts.push(prev.clone(), pt.clone());
+            prev = pt;
+          }
+        }
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        scene.add(
+          new THREE.LineSegments(
+            geo,
+            new THREE.LineBasicMaterial({
+              color: 0x2233aa,
+              transparent: true,
+              opacity: 0.35,
+            }),
+          ),
+        );
+      }
+      // The open sky is deliberately clean; scene fog provides depth without a wireframe dome.
+
+      function makeSunTexture() {
+        const c = document.createElement("canvas");
+        c.width = 128;
+        c.height = 128;
+        const sctx = c.getContext("2d");
+        sctx.strokeStyle = "#2233aa";
+        sctx.lineWidth = 3;
+        sctx.beginPath();
+        sctx.arc(64, 64, 26, 0, Math.PI * 2);
+        sctx.stroke();
+        for (let i = 0; i < 10; i++) {
+          const a = (i / 10) * Math.PI * 2;
+          sctx.beginPath();
+          sctx.moveTo(64 + Math.cos(a) * 32, 64 + Math.sin(a) * 32);
+          sctx.lineTo(64 + Math.cos(a) * 46, 64 + Math.sin(a) * 46);
+          sctx.stroke();
+        }
+        return new THREE.CanvasTexture(c);
+      }
+      const sunSprite = new THREE.Mesh(
+        new THREE.SphereGeometry(11, 16, 12),
+        new THREE.MeshBasicMaterial({ color: 0xffe08a }),
+      );
+      sunSprite.position.set(-110, 115, -145);
+      scene.add(sunSprite);
+
+      function makeEyesTexture() {
+        const c = document.createElement("canvas");
+        c.width = 64;
+        c.height = 64;
+        const ectx = c.getContext("2d");
+        ectx.strokeStyle = "#fff4df";
+        ectx.lineWidth = 6;
+        ectx.beginPath();
+        ectx.moveTo(14, 14);
+        ectx.lineTo(26, 26);
+        ectx.moveTo(26, 14);
+        ectx.lineTo(14, 26);
+        ectx.moveTo(38, 14);
+        ectx.lineTo(50, 26);
+        ectx.moveTo(50, 14);
+        ectx.lineTo(38, 26);
+        ectx.stroke();
+        return new THREE.CanvasTexture(c);
+      }
+      const eyesTexture = makeEyesTexture();
+      const enemyBodyMat = new THREE.MeshLambertMaterial({ color: 0xd95757 });
+
+      function enemyPart(geo, parent, x, y, z) {
+        const mesh = new THREE.Mesh(geo, enemyBodyMat);
+        mesh.position.set(x, y, z);
+        const edges = new THREE.EdgesGeometry(geo);
+        jitterGeometry(edges, 0.03);
+        mesh.add(new THREE.LineSegments(edges, enemyLineMat));
+        parent.add(mesh);
+        return mesh;
+      }
+
+      // a limb mesh pivots from its parent group's origin (top), so rotating the
+      // pivot swings the whole limb like a joint
+      function enemyLimb(len, thick, parentPivot) {
+        const geo = new THREE.BoxGeometry(thick, len, thick);
+        geo.translate(0, -len / 2, 0);
+        const mesh = new THREE.Mesh(geo, enemyBodyMat);
+        const edges = new THREE.EdgesGeometry(geo);
+        jitterGeometry(edges, 0.02);
+        mesh.add(new THREE.LineSegments(edges, enemyLineMat));
+        parentPivot.add(mesh);
+        return mesh;
+      }
+
+      function enemyGunPart(geo, parent, x, y, z, rx = 0, ry = 0, rz = 0) {
+        const mesh = new THREE.Mesh(geo, enemyBodyMat);
+        mesh.position.set(x, y, z);
+        mesh.rotation.set(rx, ry, rz);
+        const edges = new THREE.EdgesGeometry(geo);
+        jitterGeometry(edges, 0.01);
+        mesh.add(new THREE.LineSegments(edges, enemyLineMat));
+        parent.add(mesh);
+        return mesh;
+      }
+
+      function buildEnemyGun() {
+        const g = new THREE.Group();
+        // Forward is +Z for enemies. This puts the stock at the shoulder and barrel at eye-line.
+        enemyGunPart(
+          new THREE.CylinderGeometry(0.032, 0.038, 0.68, 7),
+          g,
+          0,
+          0.08,
+          0.67,
+          Math.PI / 2,
+          0,
+          0,
+        ); // barrel
+        enemyGunPart(new THREE.BoxGeometry(0.14, 0.15, 0.42), g, 0, 0, 0.36); // receiver
+        enemyGunPart(
+          new THREE.BoxGeometry(0.11, 0.12, 0.34),
+          g,
+          0,
+          -0.02,
+          0.02,
+          0.18,
+          0,
+          0,
+        ); // shoulder stock
+        enemyGunPart(
+          new THREE.BoxGeometry(0.07, 0.22, 0.12),
+          g,
+          0,
+          -0.18,
+          0.31,
+          -0.22,
+          0,
+          0,
+        ); // magazine
+        enemyGunPart(
+          new THREE.BoxGeometry(0.045, 0.075, 0.12),
+          g,
+          0,
+          0.14,
+          0.34,
+        ); // rear sight
+        enemyGunPart(
+          new THREE.BoxGeometry(0.035, 0.045, 0.06),
+          g,
+          0,
+          0.12,
+          0.96,
+        ); // front sight
+        return g;
+      }
+
+      function createEnemy(x, z, speed) {
+        const group = new THREE.Group();
+
+        const torsoGeo = new THREE.BoxGeometry(0.85, 1.05, 0.45);
+        const torso = enemyPart(torsoGeo, group, 0, 1.55, 0);
+        const vest = enemyPart(
+          new THREE.BoxGeometry(0.92, 0.58, 0.16),
+          group,
+          0,
+          1.68,
+          0.27,
+        );
+        enemyPart(
+          new THREE.BoxGeometry(0.55, 0.12, 0.12),
+          group,
+          0,
+          1.92,
+          0.36,
+        ); // chest rig
+
+        const headGeo = new THREE.SphereGeometry(0.4, 8, 6);
+        const head = enemyPart(headGeo, group, 0, 2.55, 0);
+        const helmet = enemyPart(
+          new THREE.SphereGeometry(0.43, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2),
+          group,
+          0,
+          2.7,
+          -0.02,
+        );
+        helmet.scale.set(1, 0.55, 1);
+
+        const eyes = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: eyesTexture, transparent: true }),
+        );
+        eyes.scale.set(0.75, 0.75, 1);
+        eyes.position.y = 2.58;
+        eyes.position.z = 0.22;
+        group.add(eyes);
+
+        const leftArmPivot = new THREE.Group();
+        leftArmPivot.position.set(-0.48, 2.05, 0.08);
+        const rightArmPivot = new THREE.Group();
+        rightArmPivot.position.set(0.48, 2.05, 0.08);
+        const leftLegPivot = new THREE.Group();
+        leftLegPivot.position.set(-0.25, 1.02, 0);
+        const rightLegPivot = new THREE.Group();
+        rightLegPivot.position.set(0.25, 1.02, 0);
+        group.add(leftArmPivot, rightArmPivot, leftLegPivot, rightLegPivot);
+        enemyLimb(0.8, 0.2, leftArmPivot);
+        enemyLimb(0.8, 0.2, rightArmPivot);
+        enemyLimb(1.05, 0.26, leftLegPivot);
+        enemyLimb(1.05, 0.26, rightLegPivot);
+
+        // Rifle is held across the chest at shoulder height. Both hands are children of
+        // the gun itself (one back at the grip/trigger, one forward on the handguard)
+        // so they stay properly attached to it instead of floating at a fixed spot in
+        // space while the gun rocks with aim and walk sway.
+        const gun = buildEnemyGun();
+        gun.position.set(0, 1.92, 0.25);
+        group.add(gun);
+        const gunMuzzle = new THREE.Object3D();
+        gunMuzzle.position.set(0, 0.08, 1.04);
+        gun.add(gunMuzzle);
+        for (const [x, y, z] of [
+          [0.05, -0.1, 0.3], // trigger hand, back near the receiver
+          [-0.03, -0.03, 0.62], // support hand, forward on the handguard
+        ]) {
+          const hand = enemyPart(
+            new THREE.SphereGeometry(0.13, 7, 5),
+            gun,
+            x,
+            y,
+            z,
+          );
+          hand.scale.set(0.9, 1.15, 0.75);
+        }
+
+        // separate head/body hitboxes so a headshot can be judged distinctly from a body hit
+        const bodyHitMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(1, 8, 6),
+          new THREE.MeshBasicMaterial({ visible: false }),
+        );
+        bodyHitMesh.position.y = 1.2;
+        group.add(bodyHitMesh);
+        const headHitMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.5, 8, 6),
+          new THREE.MeshBasicMaterial({ visible: false }),
+        );
+        headHitMesh.position.y = 2.55;
+        group.add(headHitMesh);
+
+        group.position.set(x, 0, z);
+        scene.add(group);
+
+        const enemy = {
+          group,
+          torso,
+          vest,
+          gun,
+          gunMuzzle,
+          hitMesh: bodyHitMesh,
+          headHitMesh,
+          alive: true,
+          speed,
+          hp: 160,
+          maxHp: 160,
+          bulletDamage: 5,
+          gunRecoil: 0,
+          shootCooldown: 0.4 + Math.random() * 1,
+          engageTimer: 0,
+          walkT: Math.random() * 10,
+          brain: "advance",
+          decisionTimer: 0,
+          flankSign: Math.random() < 0.5 ? -1 : 1,
+          coverPoint: null,
+          destination: null,
+          roofBuilding: null,
+          limbs: { leftArmPivot, rightArmPivot, leftLegPivot, rightLegPivot },
+        };
+        bodyHitMesh.userData.enemyRef = enemy;
+        headHitMesh.userData.enemyRef = enemy;
+        headHitMesh.userData.isHead = true;
+        return enemy;
+      }
+
+      // ---------- Weapons ----------
+      // Ammo is a single bullet count per weapon — no separate clip/reserve split.
+      // You can fire freely until it hits zero, then it reloads back up to maxAmmo.
+      const WEAPONS = [
+        {
+          name: "RIFLE",
+          maxAmmo: 180,
+          cooldown: 0.1,
+          pellets: 1,
+          spread: 0.012,
+          melee: false,
+          reloadTime: 1.2,
+          auto: true,
+        },
+        {
+          name: "SHOTGUN",
+          maxAmmo: 36,
+          cooldown: 0.6,
+          pellets: 8,
+          spread: 0.09,
+          melee: false,
+          reloadTime: 1.6,
+          auto: false,
+        },
+        {
+          name: "SNIPER",
+          maxAmmo: 25,
+          cooldown: 0.9,
+          pellets: 1,
+          spread: 0,
+          melee: false,
+          reloadTime: 1.6,
+          auto: false,
+        },
+        {
+          name: "KATANA",
+          maxAmmo: Infinity,
+          cooldown: 0.35,
+          pellets: 0,
+          spread: 0,
+          melee: true,
+          meleeRange: 4.5,
+          reloadTime: 0,
+          auto: false,
+        },
+      ];
+      let weaponIndex = 0;
+      let weaponState = WEAPONS.map((w) => ({ ammo: w.maxAmmo }));
+      function currentWeapon() {
+        return WEAPONS[weaponIndex];
+      }
+      function cycleWeapon() {
+        weaponIndex = (weaponIndex + 1) % WEAPONS.length;
+        reloading = false;
+        setGunModel(currentWeapon().name);
+      }
+
+      // ---------- Gun viewmodel (3D, camera-attached) ----------
+      const gunGroup = new THREE.Group();
+      const GUN_REST = { x: 0.28, y: -0.28, z: -0.55 };
+      gunGroup.position.set(GUN_REST.x, GUN_REST.y, GUN_REST.z);
+      gunGroup.rotation.set(0, -0.05, 0);
+      camera.add(gunGroup);
+
+      const gunBodyMat = new THREE.MeshLambertMaterial({ color: 0x36455a });
+      const gunLineMat = new THREE.LineBasicMaterial({ color: 0x172536 });
+
+      function gunPart(geo, parent, x, y, z, rx = 0, ry = 0, rz = 0) {
+        const mesh = new THREE.Mesh(geo, gunBodyMat);
+        mesh.position.set(x, y, z);
+        mesh.rotation.set(rx, ry, rz);
+        const edges = new THREE.EdgesGeometry(geo);
+        jitterGeometry(edges, 0.006);
+        mesh.add(new THREE.LineSegments(edges, gunLineMat));
+        parent.add(mesh);
+        return mesh;
+      }
+
+      function buildRifleModel() {
+        const g = new THREE.Group();
+        gunPart(
+          new THREE.CylinderGeometry(0.024, 0.03, 0.62, 8),
+          g,
+          0,
+          0.03,
+          -0.55,
+          Math.PI / 2,
+          0,
+          0,
+        ); // barrel
+        gunPart(new THREE.BoxGeometry(0.09, 0.11, 0.4), g, 0, 0, -0.18); // receiver
+        gunPart(
+          new THREE.BoxGeometry(0.06, 0.09, 0.24),
+          g,
+          0,
+          -0.1,
+          0.2,
+          0.28,
+          0,
+          0,
+        ); // stock
+        gunPart(
+          new THREE.BoxGeometry(0.05, 0.18, 0.09),
+          g,
+          0,
+          -0.14,
+          -0.12,
+          -0.18,
+          0,
+          0,
+        ); // magazine
+        gunPart(new THREE.BoxGeometry(0.045, 0.13, 0.07), g, 0, -0.1, 0.04); // grip
+        gunPart(new THREE.BoxGeometry(0.04, 0.05, 0.1), g, 0, 0.1, -0.04); // rear sight
+        gunPart(new THREE.BoxGeometry(0.03, 0.035, 0.04), g, 0, 0.07, -0.5); // front sight
+        return g;
+      }
+
+      function buildShotgunModel() {
+        const g = new THREE.Group();
+        gunPart(
+          new THREE.CylinderGeometry(0.034, 0.034, 0.55, 8),
+          g,
+          0,
+          0.04,
+          -0.5,
+          Math.PI / 2,
+          0,
+          0,
+        ); // barrel
+        gunPart(
+          new THREE.CylinderGeometry(0.02, 0.02, 0.4, 8),
+          g,
+          0,
+          -0.02,
+          -0.42,
+          Math.PI / 2,
+          0,
+          0,
+        ); // tube mag
+        gunPart(new THREE.BoxGeometry(0.1, 0.1, 0.3), g, 0, 0, -0.06); // receiver
+        gunPart(
+          new THREE.BoxGeometry(0.07, 0.08, 0.28),
+          g,
+          0,
+          -0.09,
+          0.26,
+          0.32,
+          0,
+          0,
+        ); // stock
+        gunPart(new THREE.BoxGeometry(0.08, 0.09, 0.12), g, 0, -0.03, -0.3); // pump foregrip
+        return g;
+      }
+
+      function buildSniperModel() {
+        const g = new THREE.Group();
+        gunPart(
+          new THREE.CylinderGeometry(0.022, 0.028, 0.75, 8),
+          g,
+          0,
+          0.03,
+          -0.6,
+          Math.PI / 2,
+          0,
+          0,
+        ); // barrel
+        gunPart(new THREE.BoxGeometry(0.08, 0.09, 0.5), g, 0, 0, -0.1); // receiver
+        gunPart(
+          new THREE.BoxGeometry(0.055, 0.08, 0.24),
+          g,
+          0,
+          -0.11,
+          0.24,
+          0.24,
+          0,
+          0,
+        ); // stock
+        gunPart(
+          new THREE.CylinderGeometry(0.03, 0.03, 0.26, 10),
+          g,
+          0,
+          0.14,
+          -0.15,
+          0,
+          0,
+          Math.PI / 2,
+        ); // scope tube
+        gunPart(
+          new THREE.CylinderGeometry(0.038, 0.038, 0.02, 10),
+          g,
+          0,
+          0.14,
+          -0.28,
+          0,
+          0,
+          Math.PI / 2,
+        ); // scope lens rim
+        gunPart(new THREE.BoxGeometry(0.045, 0.18, 0.08), g, 0, -0.14, -0.04); // magazine
+        return g;
+      }
+
+      function buildKatanaModel() {
+        const g = new THREE.Group();
+        gunPart(new THREE.BoxGeometry(0.018, 0.018, 0.75), g, 0, 0.02, -0.55); // blade
+        gunPart(new THREE.BoxGeometry(0.09, 0.018, 0.018), g, 0, 0.02, -0.16); // guard
+        gunPart(
+          new THREE.CylinderGeometry(0.018, 0.018, 0.2, 8),
+          g,
+          0,
+          0.02,
+          -0.02,
+          Math.PI / 2,
+          0,
+          0,
+        ); // hilt
+        return g;
+      }
+
+      // A simple two-hand rig sells the first-person weapon as something the player is holding.
+      function buildPlayerHands() {
+        const g = new THREE.Group();
+        const handMat = new THREE.MeshBasicMaterial({ color: 0xf7ddc5 });
+        for (const [x, y, z, tilt] of [
+          [-0.09, -0.18, -0.28, -0.3],
+          [0.12, -0.16, 0.12, 0.24],
+        ]) {
+          const hand = new THREE.Mesh(
+            new THREE.SphereGeometry(0.07, 8, 6),
+            handMat,
+          );
+          hand.scale.set(1.05, 1.35, 0.72);
+          hand.position.set(x, y, z);
+          hand.rotation.z = tilt;
+          const edges = new THREE.EdgesGeometry(hand.geometry);
+          hand.add(new THREE.LineSegments(edges, gunLineMat));
+          g.add(hand);
+        }
+        return g;
+      }
+
+      const GUN_BUILDERS = {
+        RIFLE: buildRifleModel,
+        SHOTGUN: buildShotgunModel,
+        SNIPER: buildSniperModel,
+        KATANA: buildKatanaModel,
+      };
+      const MUZZLE_OFFSET = { RIFLE: -0.87, SHOTGUN: -0.78, SNIPER: -0.99 };
+
+      // invisible marker at the barrel tip, used only as the spawn point for bullets
+      const muzzlePoint = new THREE.Object3D();
+      gunGroup.add(muzzlePoint);
+
+      let gunModel = null;
+      function setGunModel(name) {
+        if (gunModel) gunGroup.remove(gunModel);
+        gunModel = new THREE.Group();
+        gunModel.add(GUN_BUILDERS[name](), buildPlayerHands());
+        gunGroup.add(gunModel);
+      }
+
+      // ---------- Bullets: real blue projectiles that fly from muzzle to target, shaped per weapon ----------
+      const BULLET_SPEC = {
+        RIFLE: { color: 0x2255dd, speed: 150, trail: 1.2, size: 0.05 },
+        SHOTGUN: { color: 0x2255dd, speed: 110, trail: 0.8, size: 0.035 },
+        SNIPER: { color: 0x1133aa, speed: 300, trail: 2.4, size: 0.09 },
+        ENEMY: { color: 0xff2626, speed: 145, trail: 2.8, size: 0.085 },
+      };
+      const bullets = [];
+      const muzzleFlashes = [];
+
+      function spawnMuzzleFlash(origin) {
+        const flash = new THREE.Mesh(
+          new THREE.SphereGeometry(0.18, 7, 5),
+          new THREE.MeshBasicMaterial({
+            color: 0xffb000,
+            transparent: true,
+            opacity: 1,
+          }),
+        );
+        flash.position.copy(origin);
+        scene.add(flash);
+        muzzleFlashes.push({ flash, life: 0.12 });
+      }
+      function spawnBullet(origin, dir, dist, weaponName) {
+        const spec = BULLET_SPEC[weaponName] || BULLET_SPEC.RIFLE;
+        const lineMat = new THREE.LineBasicMaterial({
+          color: spec.color,
+          transparent: true,
+          opacity: 0.9,
+        });
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([
+          origin.clone(),
+          origin.clone(),
+        ]);
+        const line = new THREE.Line(lineGeo, lineMat);
+        const dot = new THREE.Mesh(
+          new THREE.SphereGeometry(spec.size, 6, 5),
+          new THREE.MeshBasicMaterial({ color: spec.color }),
+        );
+        dot.position.copy(origin);
+        scene.add(line, dot);
+        bullets.push({
+          line,
+          dot,
+          origin: origin.clone(),
+          dir: dir.clone(),
+          dist,
+          speed: spec.speed,
+          trail: spec.trail,
+          traveled: 0,
+        });
+        if (weaponName === "ENEMY") spawnMuzzleFlash(origin);
+      }
+      function updateBullets(dt) {
+        for (let i = bullets.length - 1; i >= 0; i--) {
+          const b = bullets[i];
+          b.traveled += b.speed * dt;
+          if (b.traveled >= b.dist + b.trail) {
+            scene.remove(b.line, b.dot);
+            b.line.geometry.dispose();
+            b.line.material.dispose();
+            b.dot.geometry.dispose();
+            b.dot.material.dispose();
+            bullets.splice(i, 1);
+            continue;
+          }
+          const headDist = Math.min(b.traveled, b.dist);
+          const tailDist = Math.max(0, headDist - b.trail);
+          const head = b.origin.clone().addScaledVector(b.dir, headDist);
+          const tail = b.origin.clone().addScaledVector(b.dir, tailDist);
+          b.line.geometry.setFromPoints([tail, head]);
+          b.dot.position.copy(head);
+        }
+        for (let i = muzzleFlashes.length - 1; i >= 0; i--) {
+          const effect = muzzleFlashes[i];
+          effect.life -= dt;
+          effect.flash.scale.setScalar(1 + (0.12 - effect.life) * 7);
+          effect.flash.material.opacity = Math.max(0, effect.life * 8);
+          if (effect.life <= 0) {
+            scene.remove(effect.flash);
+            effect.flash.geometry.dispose();
+            effect.flash.material.dispose();
+            muzzleFlashes.splice(i, 1);
+          }
+        }
+      }
+      setGunModel(currentWeapon().name);
+
+      let gunRecoil = 0,
+        gunBobT = 0;
+
+      // ---------- Grapple hook ----------
+      const GRAVITY = 24;
+      const GRAPPLE_RANGE = 90;
+      const GRAPPLE_REEL_SPEED = 26;
+      const grapple = { active: false, anchor: new THREE.Vector3() };
+      const vel = new THREE.Vector3(0, 0, 0);
+      const grappleLineGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(),
+        new THREE.Vector3(),
+      ]);
+      const grappleLine = new THREE.Line(
+        grappleLineGeo,
+        new THREE.LineBasicMaterial({ color: 0x2233aa }),
+      );
+      grappleLine.visible = false;
+      scene.add(grappleLine);
+
+      // ---------- Game state ----------
+      let running = false;
+      let paused = false;
+      let yaw = 0,
+        pitch = 0;
+      const player = { x: 0, y: 0, z: 0 };
+      let hp = 120,
+        maxHp = 120;
+      let healthNotice = 0;
+      let playerHitCooldown = 0;
+      let reloading = false,
+        reloadTimer = 0;
+      let score = 0,
+        enemiesLeft = 0,
+        survivalTime = 0;
+      let shootCooldown = 0;
+      let aimTargetDist = null;
+
+      let enemies = [];
+      let enemyHitMeshes = [];
+      let deadEnemies = []; // killed enemies mid fall-over, waiting to despawn
+      let spawnTimer = 0;
+      const healthPickups = [];
+      const healthDrops = []; // one-shot packs left behind by supply-carrier kills
+
+      function buildHealthPackMesh(x, z) {
+        const pack = new THREE.Group();
+        const caseMat = new THREE.MeshLambertMaterial({ color: 0xf5f2e8 });
+        const crossMat = new THREE.MeshBasicMaterial({ color: 0x32ba62 });
+        const caseBox = new THREE.Mesh(
+          new THREE.BoxGeometry(0.9, 0.58, 0.3),
+          caseMat,
+        );
+        const crossV = new THREE.Mesh(
+          new THREE.BoxGeometry(0.15, 0.4, 0.035),
+          crossMat,
+        );
+        const crossH = new THREE.Mesh(
+          new THREE.BoxGeometry(0.4, 0.15, 0.035),
+          crossMat,
+        );
+        crossV.position.z = crossH.position.z = 0.17;
+        pack.add(caseBox, crossV, crossH);
+        pack.position.set(x, 0.65, z);
+        scene.add(pack);
+        return pack;
+      }
+
+      function createHealthPickup(x, z) {
+        const pack = buildHealthPackMesh(x, z);
+        healthPickups.push({
+          pack,
+          x,
+          z,
+          active: true,
+          respawn: 0,
+          bob: Math.random() * Math.PI * 2,
+        });
+      }
+
+      // Kept deliberately sparse and placed away from the spawn point, rewarding
+      // movement — most healing now comes from hunting down supply-carrier kills instead.
+      [
+        [-14, 5],
+        [12, -18],
+        [5, 27],
+      ].forEach((p) => createHealthPickup(...p));
+
+      // A kill from a supply-carrier enemy (see releaseEnemy) drops a one-shot pack right
+      // where it died, instead of relying only on the sparse fixed world pickups.
+      function spawnHealthDrop(x, z) {
+        healthDrops.push({
+          pack: buildHealthPackMesh(x, z),
+          x,
+          z,
+          life: 14,
+          bob: Math.random() * Math.PI * 2,
+        });
+      }
+
+      function collectHealthPack(x, z) {
+        if (Math.hypot(player.x - x, player.z - z) >= 1.55 || hp >= maxHp)
+          return false;
+        hp = Math.min(maxHp, hp + 35);
+        healthNotice = 1.6;
+        return true;
+      }
+
+      function updateHealthPickups(dt) {
+        for (const pickup of healthPickups) {
+          if (!pickup.active) {
+            pickup.respawn -= dt;
+            if (pickup.respawn <= 0) {
+              pickup.active = true;
+              pickup.pack.visible = true;
+            }
+            continue;
+          }
+          pickup.bob += dt * 2;
+          pickup.pack.rotation.y += dt * 1.5;
+          pickup.pack.position.y = 0.65 + Math.sin(pickup.bob) * 0.12;
+          if (collectHealthPack(pickup.x, pickup.z)) {
+            pickup.active = false;
+            pickup.pack.visible = false;
+            pickup.respawn = 28;
+          }
+        }
+
+        for (let i = healthDrops.length - 1; i >= 0; i--) {
+          const drop = healthDrops[i];
+          drop.life -= dt;
+          drop.bob += dt * 2;
+          drop.pack.rotation.y += dt * 1.5;
+          drop.pack.position.y = 0.65 + Math.sin(drop.bob) * 0.12;
+          const collected = collectHealthPack(drop.x, drop.z);
+          if (collected || drop.life <= 0) {
+            scene.remove(drop.pack);
+            healthDrops.splice(i, 1);
+          }
+        }
+
+        healthNotice = Math.max(0, healthNotice - dt);
+      }
+
+      // enemies engage one at a time, staggered — later spawns wait their turn, but an
+      // earlier one that's still alive when its turn comes just adds to a pile-up
+      const ENGAGE_STAGGER = 1.05;
+      const ENGAGE_STAGGER_CAP = 7.5;
+      const ENEMY_ROOF_MAX_HEIGHT = 28;
+
+      function initEnemySpawning() {
+        // Enemies arrive continuously, one after another — there is no wave to clear.
+        spawnTimer = 1.2;
+        enemiesLeft = 0;
+        survivalTime = 0;
+      }
+
+      function releaseEnemy() {
+        const order = { rooftop: Math.random() < 0.34 };
+        // Difficulty ramps smoothly with how long the player has survived, instead of in wave jumps.
+        const speed =
+          (68 + Math.random() * 22 + Math.min(survivalTime, 90) * 0.35) *
+          WORLD_SCALE;
+        let enemy;
+        const playableRoofs = buildingRoofs.filter(
+          (roof) => roof.h <= ENEMY_ROOF_MAX_HEIGHT,
+        );
+        if (order.rooftop && playableRoofs.length) {
+          const roof =
+            playableRoofs[Math.floor(Math.random() * playableRoofs.length)];
+          const rx = THREE.MathUtils.clamp(
+            roof.x + (Math.random() - 0.5) * roof.h * 0.16,
+            roof.minX + 1,
+            roof.maxX - 1,
+          );
+          const rz = THREE.MathUtils.clamp(
+            roof.z + (Math.random() - 0.5) * roof.h * 0.16,
+            roof.minZ + 1,
+            roof.maxZ - 1,
+          );
+          enemy = createEnemy(rx, rz, speed);
+          enemy.group.position.y = roof.h;
+          enemy.roofBuilding = roof;
+          // Forced to climb down to street level before doing anything else — see the
+          // mustDescend guard in the main update loop, which stops chooseEnemyPlan from
+          // overriding this on the very next frame.
+          enemy.mustDescend = true;
+          enemy.brain = "descend";
+          enemy.destination = { x: roof.access.roofX, z: roof.access.roofZ };
+        } else {
+          // Resample a few times so a spawn ring that happens to cross a building
+          // or prop doesn't drop the enemy inside a wall.
+          let sx, sz, attempts = 0;
+          do {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 17 + Math.random() * 10;
+            sx = player.x + Math.sin(angle) * dist;
+            sz = player.z + Math.cos(angle) * dist;
+            attempts++;
+          } while (enemyCollidesAt(sx, sz) && attempts < 12);
+          enemy = createEnemy(sx, sz, speed);
+        }
+        // A marked minority of enemies carry a supply pack — their green vest calls
+        // them out as worth hunting down, and killing one drops a health pack on the spot.
+        enemy.suppliesHealth = Math.random() < 0.12;
+        if (enemy.suppliesHealth) {
+          enemy.vest.material = enemy.vest.material.clone();
+          enemy.vest.material.color.set(0x32ba62);
+        }
+
+        // Heavies: a black-clad, tankier, harder-hitting variant. Recoloring the whole
+        // body (after the vest tint above) so a heavy supply-carrier still shows its
+        // green vest against an otherwise black body.
+        enemy.heavy = Math.random() < 0.18;
+        if (enemy.heavy) {
+          enemy.hp = 420;
+          enemy.maxHp = 420;
+          enemy.bulletDamage = 12;
+          const heavyMat = enemyBodyMat.clone();
+          heavyMat.color.set(0x15151a);
+          enemy.group.traverse((obj) => {
+            if (obj.isMesh && obj.material === enemyBodyMat)
+              obj.material = heavyMat;
+          });
+        }
+
+        enemies.push(enemy);
+        enemyHitMeshes.push(enemy.hitMesh, enemy.headHitMesh);
+        enemiesLeft++;
+        spawnTimer = 3.2 + Math.random() * 1.5;
+      }
+
+      const ENEMY_RADIUS = 0.5;
+      function collidesAt(x, z) {
+        for (const b of buildingColliders) {
+          if (
+            x > b.minX - PLAYER_RADIUS &&
+            x < b.maxX + PLAYER_RADIUS &&
+            z > b.minZ - PLAYER_RADIUS &&
+            z < b.maxZ + PLAYER_RADIUS
+          )
+            return true;
+        }
+        return false;
+      }
+      function enemyCollidesAt(x, z) {
+        for (const b of buildingColliders) {
+          if (
+            x > b.minX - ENEMY_RADIUS &&
+            x < b.maxX + ENEMY_RADIUS &&
+            z > b.minZ - ENEMY_RADIUS &&
+            z < b.maxZ + ENEMY_RADIUS
+          )
+            return true;
+        }
+        return false;
+      }
+
+      // true when nothing in buildingMeshes blocks the segment — used so enemies only
+      // shoot (and only lose track of you) when they actually have a sightline, which
+      // combined with enemyCollidesAt lets them use structures as real cover
+      function hasLineOfSight(from, to) {
+        const offset = to.clone().sub(from);
+        const dist = offset.length();
+        if (dist < 0.001) return true;
+        raycaster.set(from, offset.multiplyScalar(1 / dist));
+        raycaster.far = dist;
+        const blocked =
+          raycaster.intersectObjects(buildingMeshes, false).length > 0;
+        raycaster.far = Infinity;
+        return !blocked;
+      }
+
+      function killEnemy(en, scored, headshot) {
+        if (!en.alive) return;
+        en.alive = false;
+        playEnemyDeathSound();
+        enemyHitMeshes = enemyHitMeshes.filter(
+          (m) => m !== en.hitMesh && m !== en.headHitMesh,
+        );
+        enemiesLeft--;
+        if (scored) score += headshot ? 150 : 100;
+        if (en.suppliesHealth) {
+          spawnHealthDrop(en.group.position.x, en.group.position.z);
+        }
+        // fall over and lie there for a few seconds instead of vanishing instantly
+        en.deathTimer = 3;
+        en.fallAxis = Math.random() < 0.5 ? "x" : "z";
+        en.fallDir = Math.random() < 0.5 ? 1 : -1;
+        en.fallVel = 0; // a body killed on a roof or mid-ladder drops to street level
+        deadEnemies.push(en);
+      }
+
+      function updateDeadEnemies(dt) {
+        for (let i = deadEnemies.length - 1; i >= 0; i--) {
+          const en = deadEnemies[i];
+          en.deathTimer -= dt;
+          const fallProgress = Math.min(1, (3 - en.deathTimer) / 0.35);
+          const angle =
+            Math.sin((fallProgress * Math.PI) / 2) * (Math.PI / 2) * en.fallDir;
+          if (en.fallAxis === "x") en.group.rotation.x = angle;
+          else en.group.rotation.z = angle;
+          if (en.group.position.y > 0) {
+            en.fallVel -= GRAVITY * dt;
+            en.group.position.y = Math.max(
+              0,
+              en.group.position.y + en.fallVel * dt,
+            );
+          }
+          if (en.deathTimer <= 0) {
+            scene.remove(en.group);
+            deadEnemies.splice(i, 1);
+          }
+        }
+      }
+
+      function nearestEnemyInMeleeCone(range) {
+        const forward = new THREE.Vector3(0, 0, -1).applyEuler(
+          new THREE.Euler(0, yaw, 0),
+        );
+        let best = null,
+          bestDist = Infinity;
+        for (const en of enemies) {
+          if (!en.alive) continue;
+          const dx = en.group.position.x - player.x;
+          const dz = en.group.position.z - player.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist > range || dist === 0) continue;
+          const dot = (dx / dist) * forward.x + (dz / dist) * forward.z;
+          if (dot > 0.5 && dist < bestDist) {
+            bestDist = dist;
+            best = en;
+          }
+        }
+        return best;
+      }
+
+      // body shots chip away hp; a headshot is always lethal regardless of weapon
+      const BODY_DAMAGE = { RIFLE: 34, SHOTGUN: 18, SNIPER: 110 };
+
+      function fireRaycast(spread, weapon) {
+        const dir = new THREE.Vector3(0, 0, -1).applyEuler(
+          new THREE.Euler(
+            pitch + (Math.random() - 0.5) * spread,
+            yaw + (Math.random() - 0.5) * spread,
+            0,
+            "YXZ",
+          ),
+        );
+        raycaster.far = Infinity;
+        raycaster.set(camera.position, dir);
+        const hits = raycaster.intersectObjects(
+          enemyHitMeshes.concat(shootableCrates),
+          false,
+        );
+        muzzlePoint.position.set(0, 0.04, MUZZLE_OFFSET[weapon.name] || -0.85);
+        const muzzleWorld = new THREE.Vector3();
+        muzzlePoint.getWorldPosition(muzzleWorld);
+        spawnBullet(
+          muzzleWorld,
+          dir,
+          hits.length ? hits[0].distance : 60,
+          weapon.name,
+        );
+        if (hits.length) {
+          const hitObj = hits[0].object;
+          const enemy = hitObj.userData.enemyRef;
+          if (hitObj.userData.crateRef) {
+            breakCrate(hitObj.userData.crateRef);
+            return;
+          }
+          if (enemy && enemy.alive) {
+            if (hitObj.userData.isHead) {
+              killEnemy(enemy, true, true);
+            } else {
+              enemy.hp -= BODY_DAMAGE[weapon.name] || 25;
+              if (enemy.hp <= 0) killEnemy(enemy, true);
+            }
+          }
+        }
+      }
+
+      const GUN_KICK = { RIFLE: 0.05, SHOTGUN: 0.15, SNIPER: 0.2, KATANA: 0.1 };
+      const AUTO_SPREAD_MAX = 0.045;
+      const AUTO_SPREAD_STEP = 0.012;
+      let autoSpreadBonus = 0;
+
+      function fire() {
+        const weapon = currentWeapon();
+        const state = weaponState[weaponIndex];
+        shootCooldown = weapon.cooldown;
+        gunRecoil = GUN_KICK[weapon.name] || 0.08;
+
+        if (weapon.melee) {
+          playSlashSound();
+          const enemy = nearestEnemyInMeleeCone(weapon.meleeRange);
+          if (enemy) killEnemy(enemy, true);
+          return;
+        }
+
+        state.ammo--;
+        playShotSound(weapon.name);
+        const spread = weapon.spread + (weapon.auto ? autoSpreadBonus : 0);
+        for (let i = 0; i < weapon.pellets; i++) fireRaycast(spread, weapon);
+        if (weapon.auto)
+          autoSpreadBonus = Math.min(
+            AUTO_SPREAD_MAX,
+            autoSpreadBonus + AUTO_SPREAD_STEP,
+          );
+      }
+
+      function moveEnemyToward(en, target, dt, multiplier = 1) {
+        const dx = target.x - en.group.position.x,
+          dz = target.z - en.group.position.z;
+        const distance = Math.hypot(dx, dz);
+        if (distance < 0.12) return true;
+        const step = Math.min(distance, en.speed * multiplier * dt);
+        const nx = en.group.position.x + (dx / distance) * step;
+        const nz = en.group.position.z + (dz / distance) * step;
+        // Roof occupants can walk freely over their own roof. Street enemies respect structures.
+        if (en.roofBuilding && en.group.position.y > 0.2) {
+          en.group.position.x = THREE.MathUtils.clamp(
+            nx,
+            en.roofBuilding.minX + 0.55,
+            en.roofBuilding.maxX - 0.55,
+          );
+          en.group.position.z = THREE.MathUtils.clamp(
+            nz,
+            en.roofBuilding.minZ + 0.55,
+            en.roofBuilding.maxZ - 0.55,
+          );
+        } else {
+          if (!enemyCollidesAt(nx, en.group.position.z))
+            en.group.position.x = nx;
+          if (!enemyCollidesAt(en.group.position.x, nz))
+            en.group.position.z = nz;
+        }
+        en.group.rotation.y = Math.atan2(dx, dz);
+        return distance < 0.45;
+      }
+
+      function chooseEnemyPlan(en, playerPos, canSeePlayer, dist) {
+        en.decisionTimer = 1.1 + Math.random() * 1.5;
+        if (en.roofBuilding) {
+          const roof = en.roofBuilding;
+          if (dist < 13 && player.y < 2 && Math.random() < 0.32) {
+            en.brain = "descend";
+            en.destination = { x: roof.access.roofX, z: roof.access.roofZ };
+          } else {
+            // On a roof, use the edge as a firing lane and reposition between bursts.
+            en.brain = canSeePlayer ? "roofFire" : "roofPatrol";
+            const edgeX = THREE.MathUtils.clamp(
+              playerPos.x,
+              roof.minX + 1,
+              roof.maxX - 1,
+            );
+            const edgeZ = THREE.MathUtils.clamp(
+              playerPos.z,
+              roof.minZ + 1,
+              roof.maxZ - 1,
+            );
+            en.destination = { x: edgeX, z: edgeZ };
+          }
+          return;
+        }
+        if (!canSeePlayer && Math.random() < 0.22) {
+          // They use low structures for a tactical angle, never the high tower roofs.
+          const lowAccess = buildingAccess.filter(
+            (a) => a.h <= ENEMY_ROOF_MAX_HEIGHT,
+          );
+          const access = lowAccess.reduce(
+            (best, a) =>
+              !best ||
+              Math.hypot(a.x - en.group.position.x, a.z - en.group.position.z) <
+                Math.hypot(
+                  best.x - en.group.position.x,
+                  best.z - en.group.position.z,
+                )
+                ? a
+                : best,
+            null,
+          );
+          if (access) {
+            en.brain = "climb";
+            en.destination = access;
+            return;
+          }
+        }
+        if (canSeePlayer && dist < 18) {
+          en.brain = "cover";
+          const sideX =
+            (-(playerPos.z - en.group.position.z) / Math.max(dist, 1)) *
+            en.flankSign;
+          const sideZ =
+            ((playerPos.x - en.group.position.x) / Math.max(dist, 1)) *
+            en.flankSign;
+          en.destination = {
+            x: en.group.position.x + sideX * 4,
+            z: en.group.position.z + sideZ * 4,
+          };
+        } else {
+          en.brain = "flank";
+          const sideX =
+            (-(playerPos.z - en.group.position.z) / Math.max(dist, 1)) *
+            en.flankSign;
+          const sideZ =
+            ((playerPos.x - en.group.position.x) / Math.max(dist, 1)) *
+            en.flankSign;
+          en.destination = {
+            x: playerPos.x + sideX * 5,
+            z: playerPos.z + sideZ * 5,
+          };
+        }
+      }
+
+      function update(dt) {
+        // Phone browsers can occasionally lose a touch-end event. The controller sends
+        // a 30Hz heartbeat, so a short silence is safe evidence to release all controls.
+        if (Date.now() - input.lastReceived > 450) resetInputState();
+        updateHealthPickups(dt);
+        playerHitCooldown = Math.max(0, playerHitCooldown - dt);
+
+        // look
+        const lookSensitivity = 0.0035;
+        yaw -= input.look.dx * lookSensitivity;
+        pitch -= input.look.dy * lookSensitivity;
+        input.look.dx = 0;
+        input.look.dy = 0;
+
+        // movement (grounded only — mid-grapple/airborne, the grapple/gravity velocity below takes over)
+        const grounded = player.y <= 0.001 && !grapple.active;
+        const moveRight = Math.abs(input.move.x) > 0.08 ? input.move.x : 0;
+        const stickY = Math.abs(input.move.y) > 0.08 ? input.move.y : 0;
+
+        // Hold × to plant your feet. The entire stick then directs the gun instead of movement.
+        const PITCH_STICK_SPEED = 1.6;
+        if (input.aim) {
+          yaw -= moveRight * PITCH_STICK_SPEED * dt;
+          pitch -= stickY * PITCH_STICK_SPEED * dt;
+        }
+        pitch = Math.max(-1.1, Math.min(1.1, pitch));
+
+        const moveForward = input.aim ? 0 : -stickY;
+        if (grounded && !input.aim && (moveRight || moveForward)) {
+          const forward = new THREE.Vector3(0, 0, -1).applyEuler(
+            new THREE.Euler(0, yaw, 0),
+          );
+          const right = new THREE.Vector3(1, 0, 0).applyEuler(
+            new THREE.Euler(0, yaw, 0),
+          );
+          const speed = 9;
+          const nx =
+            player.x +
+            (right.x * moveRight + forward.x * moveForward) * speed * dt;
+          const nz =
+            player.z +
+            (right.z * moveRight + forward.z * moveForward) * speed * dt;
+          if (!collidesAt(nx, player.z)) player.x = nx;
+          if (!collidesAt(player.x, nz)) player.z = nz;
+        }
+
+        // grapple hook
+        if (input.grapple && !grapple.active) {
+          raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+          const hits = raycaster.intersectObjects(buildingMeshes, false);
+          if (hits.length && hits[0].distance <= GRAPPLE_RANGE) {
+            grapple.active = true;
+            grapple.anchor.copy(hits[0].point);
+          }
+        }
+        if (!input.grapple) grapple.active = false;
+
+        if (grapple.active) {
+          const toAnchor = grapple.anchor
+            .clone()
+            .sub(new THREE.Vector3(player.x, player.y, player.z));
+          const dist = toAnchor.length();
+          if (dist > 2) {
+            toAnchor.normalize();
+            vel.copy(toAnchor).multiplyScalar(GRAPPLE_REEL_SPEED);
+          } else {
+            grapple.active = false;
+          }
+        }
+
+        // gravity + velocity integration (grapple momentum carries over after release)
+        if (!grapple.active) vel.y -= GRAVITY * dt;
+        if (grapple.active || player.y > 0 || vel.lengthSq() > 0) {
+          player.x += vel.x * dt;
+          player.y += vel.y * dt;
+          player.z += vel.z * dt;
+          if (player.y <= 0) {
+            player.y = 0;
+            vel.set(0, 0, 0);
+          }
+        }
+
+        grappleLine.visible = grapple.active;
+        if (grapple.active) {
+          const origin = new THREE.Vector3(
+            player.x,
+            player.y + EYE_HEIGHT - 0.3,
+            player.z,
+          );
+          grappleLine.geometry.setFromPoints([origin, grapple.anchor]);
+        }
+
+        camera.position.set(player.x, player.y + EYE_HEIGHT, player.z);
+        camera.rotation.set(pitch, yaw, 0);
+        camera.updateMatrixWorld();
+
+        // what's under the crosshair right now (drives the red target box)
+        raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+        const aimHits = raycaster.intersectObjects(enemyHitMeshes, false);
+        aimTargetDist = aimHits.length ? aimHits[0].distance : null;
+
+        // weapon switching
+        if (input.weaponPressed) {
+          cycleWeapon();
+          input.weaponPressed = false;
+        }
+
+        // reload
+        const weapon = currentWeapon();
+        const wstate = weaponState[weaponIndex];
+        // No clip/reserve split — just bullets. Once the count finishes, it reloads
+        // back up to a full maxAmmo (this also fires automatically on empty, so the
+        // reload button is optional rather than required).
+        if (!reloading && !weapon.melee && wstate.ammo <= 0) {
+          reloading = true;
+          reloadTimer = weapon.reloadTime;
+        }
+        input.reloadPressed = false;
+        if (reloading) {
+          reloadTimer -= dt;
+          if (reloadTimer <= 0) {
+            reloading = false;
+            wstate.ammo = weapon.maxAmmo;
+          }
+        }
+
+        if (shootCooldown > 0) shootCooldown -= dt;
+        updateBullets(dt);
+
+        // Holding the shoot button keeps firing every weapon at its own cooldown pace —
+        // no need to release and re-press between shots, even on the "semi-auto" guns.
+        const canFire = weapon.melee
+          ? !reloading
+          : !reloading && wstate.ammo > 0;
+        if (input.shoot && canFire && shootCooldown <= 0) {
+          fire();
+        }
+        if (!input.shoot)
+          autoSpreadBonus = Math.max(0, autoSpreadBonus - dt * 0.2);
+
+        // Enemies arrive as small squads, giving each encounter readable pacing.
+        spawnTimer -= dt;
+        if (spawnTimer <= 0) releaseEnemy();
+
+        // Enemies navigate, use cover, and travel between street and rooftops via ladders.
+        const PLAYER_REACH_HEIGHT = 3;
+        const ENEMY_SHOOT_RANGE = 24;
+        for (const en of enemies) {
+          if (!en.alive) continue;
+          const dx = player.x - en.group.position.x;
+          const dz = player.z - en.group.position.z;
+          const dist = Math.hypot(dx, dz);
+          let moving = false;
+          const eyePos = new THREE.Vector3(
+            en.group.position.x,
+            en.group.position.y + 1.9,
+            en.group.position.z,
+          );
+          const playerPos = new THREE.Vector3(
+            player.x,
+            player.y + EYE_HEIGHT,
+            player.z,
+          );
+          const canSeePlayer =
+            dist <= ENEMY_SHOOT_RANGE && hasLineOfSight(eyePos, playerPos);
+
+          if (
+            dist <= MELEE_RADIUS &&
+            player.y < PLAYER_REACH_HEIGHT &&
+            !en.roofBuilding
+          ) {
+            killEnemy(en, false);
+            hp -= 12;
+            if (hp <= 0) {
+              hp = 0;
+              endGame(false);
+            }
+          } else if (en.climbing) {
+            const access = en.climbing;
+            const direction = en.climbingUp ? 1 : -1;
+            en.group.position.y += direction * 4.5 * dt;
+            // The ladder runs from the street-side rung (bottom) to the roof-side ledge
+            // (top) — interpolate across it instead of pinning to one side the whole
+            // climb, which used to leave descending enemies standing inside the wall
+            // once they reached the ground (roofX/roofZ sit inside the footprint).
+            const climbT = THREE.MathUtils.clamp(
+              en.group.position.y / access.h,
+              0,
+              1,
+            );
+            en.group.position.x = THREE.MathUtils.lerp(
+              access.x,
+              access.roofX,
+              climbT,
+            );
+            en.group.position.z = THREE.MathUtils.lerp(
+              access.z,
+              access.roofZ,
+              climbT,
+            );
+            en.group.rotation.y = Math.PI / 2;
+            moving = true;
+            // Landing (either direction) clears the brain that drove the climb — otherwise a
+            // stale 'descend'/'climb' brain can outlive the roofBuilding/destination it was
+            // paired with and read .access off whatever is null on the next frame.
+            if (en.climbingUp && en.group.position.y >= access.h) {
+              en.group.position.y = access.h;
+              en.roofBuilding =
+                buildingRoofs.find((r) => r.access === access) || null;
+              en.climbing = null;
+              en.brain = "advance";
+              en.destination = null;
+              en.decisionTimer = 0;
+            } else if (!en.climbingUp && en.group.position.y <= 0) {
+              en.group.position.y = 0;
+              en.roofBuilding = null;
+              en.climbing = null;
+              en.brain = "advance";
+              en.destination = null;
+              en.decisionTimer = 0;
+            }
+          } else {
+            en.decisionTimer -= dt;
+            // A freshly-spawned rooftop enemy must reach the ladder and climb down before
+            // chooseEnemyPlan gets a say — otherwise it overrides the forced descent on the
+            // very next frame (decisionTimer starts at 0) and the enemy never comes down.
+            if (!en.mustDescend && (en.decisionTimer <= 0 || !en.destination))
+              chooseEnemyPlan(en, playerPos, canSeePlayer, dist);
+
+            if (
+              en.brain === "climb" &&
+              moveEnemyToward(en, en.destination, dt)
+            ) {
+              en.climbing = en.destination;
+              en.climbingUp = true;
+            } else if (
+              en.brain === "descend" &&
+              en.roofBuilding &&
+              moveEnemyToward(en, en.destination, dt)
+            ) {
+              en.climbing = en.roofBuilding.access;
+              en.climbingUp = false;
+              en.mustDescend = false;
+            } else if (en.destination && en.brain !== "roofFire") {
+              moveEnemyToward(
+                en,
+                en.destination,
+                dt,
+                en.brain === "cover" ? 0.75 : 1,
+              );
+              moving = true;
+            }
+
+            if (
+              canSeePlayer &&
+              (en.brain === "roofFire" || en.brain === "cover" || dist < 12)
+            ) {
+              en.group.rotation.y = Math.atan2(dx, dz);
+              en.gun.rotation.x = Math.atan2(
+                playerPos.y - (en.group.position.y + 1.98),
+                Math.max(dist, 0.1),
+              );
+              en.shootCooldown -= dt;
+              if (en.shootCooldown <= 0) {
+                const muzzleWorld = new THREE.Vector3();
+                en.gunMuzzle.getWorldPosition(muzzleWorld);
+                // Enemies lead poorly and become less accurate with range; their visible tracer
+                // follows the same imperfect shot instead of implying unavoidable hits.
+                const hitChance = dist < 8 ? 0.54 : dist < 16 ? 0.39 : 0.25;
+                const hitsPlayer = Math.random() < hitChance;
+                const aimPoint = playerPos.clone();
+                if (!hitsPlayer) {
+                  aimPoint.x += (Math.random() - 0.5) * (2.2 + dist * 0.1);
+                  aimPoint.y += (Math.random() - 0.5) * 1.4;
+                  aimPoint.z += (Math.random() - 0.5) * (2.2 + dist * 0.1);
+                }
+                const dir = aimPoint.sub(muzzleWorld).normalize();
+                spawnBullet(
+                  muzzleWorld,
+                  dir,
+                  muzzleWorld.distanceTo(playerPos),
+                  "ENEMY",
+                );
+                en.gunRecoil = 1;
+                if (hitsPlayer && playerHitCooldown <= 0) {
+                  hp -= en.bulletDamage;
+                  playerHitCooldown = 0.42;
+                  if (hp <= 0) {
+                    hp = 0;
+                    endGame(false);
+                  }
+                }
+                en.shootCooldown = 2.05 + Math.random() * 1.25;
+              }
+            }
+          }
+
+          if (en.alive) {
+            if (moving) en.walkT += dt * 9;
+            // Keep both hands on the rifle; only a subtle shoulder motion remains while walking.
+            const armSway = Math.sin(en.walkT) * (moving ? 0.12 : 0);
+            const legSwing = Math.sin(en.walkT) * (moving ? 0.7 : 0);
+            en.limbs.leftArmPivot.rotation.x = -0.78 + armSway;
+            en.limbs.rightArmPivot.rotation.x = -0.92 - armSway;
+            // The shoulders sit 0.48 out to each side, but the rifle is held on the
+            // centerline — without an inward cant here the forearms swing straight down
+            // past the sides of the gun instead of actually reaching it.
+            en.limbs.leftArmPivot.rotation.z = 0.5;
+            en.limbs.rightArmPivot.rotation.z = -0.5;
+            en.limbs.leftLegPivot.rotation.x = -legSwing;
+            en.limbs.rightLegPivot.rotation.x = legSwing;
+            const torsoBob = Math.abs(Math.cos(en.walkT)) * (moving ? 0.05 : 0);
+            en.torso.position.y = 1.55 + torsoBob;
+
+            // The rifle rides the torso's bob and settles out of its firing kick each
+            // frame, instead of hanging frozen in the air independent of the body.
+            en.gunRecoil = Math.max(0, en.gunRecoil - dt * 8);
+            en.gun.position.y = 1.92 + torsoBob;
+            en.gun.position.z = 0.25 - en.gunRecoil * 0.1;
+          }
+        }
+        updateDeadEnemies(dt);
+        survivalTime += dt;
+
+        // gun viewmodel: idle sway + walk bob + recoil kick, then decay recoil
+        gunRecoil = Math.max(0, gunRecoil - dt * 5);
+        const gunMoving = grounded && !input.aim && (moveRight || moveForward);
+        gunBobT += dt * (gunMoving ? 9 : 1.6);
+        const bobAmt = gunMoving ? 1 : 0.25;
+        const bobX = Math.sin(gunBobT) * 0.012 * bobAmt;
+        const bobY = Math.abs(Math.sin(gunBobT * 2)) * 0.01 * bobAmt;
+        gunGroup.position.set(
+          GUN_REST.x + bobX,
+          GUN_REST.y + bobY + gunRecoil * 0.35,
+          GUN_REST.z + gunRecoil,
+        );
+        gunGroup.rotation.set(-gunRecoil * 1.6, -0.05, 0);
+      }
+
+      // ---------- HUD overlay (screen-space ink drawing) ----------
+      // The gun itself is now a real 3D viewmodel (see "Gun viewmodel" section) rendered by
+      // the WebGL layer; this canvas only draws the 2D crosshair + text HUD on top of it.
+      function drawHUD() {
+        ctx.font = hudFont(22);
+        glowText(`SCORE ${score}`, 20, 128, HUD_ACCENT, 10);
+        ctx.font = hudFont(16, "600");
+        ctx.fillStyle = INK;
+        ctx.fillText(`${enemiesLeft} enemies`, W - 160, 40);
+
+        // Large, high-contrast life meter: always visible in the top-left
+        // corner. Dark tactical readout instead of the old cream card, so
+        // it reads as a HUD overlay rather than a paper doodle — the 3D
+        // world's own comic-book art style behind it is untouched.
+        ctx.fillStyle = HUD_DARK;
+        ctx.fillRect(16, 16, 274, 96);
+        ctx.strokeStyle = HUD_ACCENT;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(18, 18, 270, 92);
+        ctx.font = hudFont(19);
+        glowText("LIFE", 30, 47, HUD_ACCENT, 6);
+        ctx.font = hudFont(28);
+        const critical = hp <= maxHp * 0.3;
+        glowText(
+          `${Math.ceil(hp)} / ${maxHp}`,
+          104,
+          48,
+          critical ? HUD_DANGER : "#fff",
+          critical ? 16 : 4,
+        );
+        ctx.strokeStyle = "rgba(255,255,255,.25)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(30, 66, 238, 25);
+        ctx.fillStyle = HUD_DANGER;
+        ctx.fillRect(33, 69, 232 * Math.max(0, hp / maxHp), 19);
+        if (healthNotice > 0) {
+          ctx.font = hudFont(18);
+          glowText("HEALTH +35", 30, 106, "#4dff8a", 8);
+        }
+
+        // weapon + ammo — one bullet count per weapon, no clip/reserve split.
+        const weapon = currentWeapon();
+        const wstate = weaponState[weaponIndex];
+        ctx.font = hudFont(20);
+        const ammoText = weapon.melee
+          ? "READY"
+          : reloading
+            ? "RELOADING..."
+            : `${wstate.ammo}/${weapon.maxAmmo}`;
+        glowText(ammoText, 20, H - 34, reloading ? HUD_DANGER : HUD_ACCENT, 8);
+        ctx.font = hudFont(13, "600");
+        ctx.fillStyle = INK;
+        ctx.fillText(weapon.name, 20, H - 54);
+      }
+
+      // bracket-corner target box — appears over the crosshair whenever there's a
+      // hittable enemy directly under it, so the player knows they can shoot
+      function drawTargetBox(cx, cy, size) {
+        const half = size / 2,
+          arm = size * 0.32;
+        const corners = [
+          [-half, -half, 1, 0],
+          [half, -half, -1, 0],
+          [-half, half, 1, 0],
+          [half, half, -1, 0],
+        ];
+        for (const [ox, oy, hdx] of corners) {
+          const x = cx + ox,
+            y = cy + oy;
+          const vdy = oy < 0 ? 1 : -1;
+          sketchLineColor(x, y, x + hdx * arm, y, "#cc3333", 1, 0.8);
+          sketchLineColor(x, y, x, y + vdy * arm, "#cc3333", 1, 0.8);
+        }
+      }
+
+      // A small floating bar over each visible enemy's head, draining from 100% to 0%
+      // as it takes damage — a quick read on how much more it can soak up before dying.
+      const healthBarProj = new THREE.Vector3();
+      function drawEnemyHealthBars() {
+        for (const en of enemies) {
+          if (!en.alive) continue;
+          const frac = Math.max(0, Math.min(1, en.hp / en.maxHp));
+          healthBarProj.set(
+            en.group.position.x,
+            en.group.position.y + 3.05,
+            en.group.position.z,
+          );
+          healthBarProj.project(camera);
+          if (
+            healthBarProj.z > 1 ||
+            Math.abs(healthBarProj.x) > 1 ||
+            Math.abs(healthBarProj.y) > 1
+          )
+            continue;
+          const dist = camera.position.distanceTo(en.group.position);
+          const sx = (healthBarProj.x * 0.5 + 0.5) * W;
+          const sy = (1 - (healthBarProj.y * 0.5 + 0.5)) * H;
+          const barW = Math.max(20, Math.min(56, 850 / dist));
+          const barH = 5;
+          ctx.fillStyle = "rgba(20,20,20,0.6)";
+          ctx.fillRect(sx - barW / 2 - 1, sy - barH / 2 - 1, barW + 2, barH + 2);
+          ctx.fillStyle =
+            frac > 0.5 ? "#4ee37a" : frac > 0.2 ? "#f2c14e" : "#e0453f";
+          ctx.fillRect(sx - barW / 2, sy - barH / 2, barW * frac, barH);
+        }
+      }
+
+      // off-screen red arrows pointing toward nearby enemies that aren't in view,
+      // so the player isn't left hunting around the map for them
+      const ENEMY_INDICATOR_RANGE = 55;
+      const arrowFwd = new THREE.Vector3();
+      const arrowRight = new THREE.Vector3();
+      const arrowProj = new THREE.Vector3();
+      function drawEnemyArrows() {
+        if (!enemies.length) return;
+        const cx = W / 2,
+          cy = H / 2;
+        const R = Math.min(W, H) * 0.42;
+        arrowFwd.set(0, 0, -1).applyEuler(new THREE.Euler(0, yaw, 0));
+        arrowRight.set(1, 0, 0).applyEuler(new THREE.Euler(0, yaw, 0));
+
+        for (const en of enemies) {
+          if (!en.alive) continue;
+          const dx = en.group.position.x - player.x;
+          const dz = en.group.position.z - player.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist > ENEMY_INDICATOR_RANGE || dist < 0.001) continue;
+
+          arrowProj.set(
+            en.group.position.x,
+            en.group.position.y + 1.6,
+            en.group.position.z,
+          );
+          arrowProj.project(camera);
+          const onScreen =
+            arrowProj.z < 1 &&
+            Math.abs(arrowProj.x) < 0.92 &&
+            Math.abs(arrowProj.y) < 0.92;
+          if (onScreen) continue;
+
+          const ndx = dx / dist,
+            ndz = dz / dist;
+          const relX = ndx * arrowRight.x + ndz * arrowRight.z;
+          const relZ = ndx * arrowFwd.x + ndz * arrowFwd.z;
+          const angle = Math.atan2(relX, relZ);
+
+          const px = cx + Math.sin(angle) * R;
+          const py = cy - Math.cos(angle) * R;
+          const alpha = 0.35 + (1 - dist / ENEMY_INDICATOR_RANGE) * 0.55;
+          const arrowColor = en.heavy ? "21,21,26" : "204,51,51";
+
+          const len = 15,
+            wid = 8;
+          const tip = {
+            x: px + Math.sin(angle) * len,
+            y: py - Math.cos(angle) * len,
+          };
+          const baseL = {
+            x: px + Math.sin(angle - 2.6) * wid,
+            y: py - Math.cos(angle - 2.6) * wid,
+          };
+          const baseR = {
+            x: px + Math.sin(angle + 2.6) * wid,
+            y: py - Math.cos(angle + 2.6) * wid,
+          };
+          sketchLineColor(
+            tip.x,
+            tip.y,
+            baseL.x,
+            baseL.y,
+            `rgba(${arrowColor},${alpha})`,
+            1,
+            1,
+          );
+          sketchLineColor(
+            tip.x,
+            tip.y,
+            baseR.x,
+            baseR.y,
+            `rgba(${arrowColor},${alpha})`,
+            1,
+            1,
+          );
+        }
+      }
+
+      function drawMinimap() {
+        const size = Math.min(200, Math.max(150, Math.min(W, H) * 0.24));
+        const pad = 22,
+          left = W - size - pad,
+          top = H - size - pad;
+        const extent = 82; // Covers the complete playable city block in one glance.
+        const toMap = (x, z) => ({
+          x: left + ((x + extent) / (extent * 2)) * size,
+          y: top + ((z + extent) / (extent * 2)) * size,
+        });
+
+        ctx.fillStyle = "rgba(16, 35, 52, 0.9)";
+        ctx.fillRect(left, top, size, size);
+        ctx.strokeStyle = "#eaf5ff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(left, top, size, size);
+        ctx.strokeStyle = "rgba(150, 194, 219, 0.22)";
+        ctx.lineWidth = 1;
+        for (let step = -60; step <= 60; step += 30) {
+          const a = toMap(step, -extent),
+            b = toMap(step, extent),
+            c = toMap(-extent, step),
+            d = toMap(extent, step);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.moveTo(c.x, c.y);
+          ctx.lineTo(d.x, d.y);
+          ctx.stroke();
+        }
+
+        // Structures are laid out as their actual top-down footprints.
+        ctx.fillStyle = "#8294a3";
+        for (const b of buildingColliders) {
+          const a = toMap(b.minX, b.minZ),
+            c = toMap(b.maxX, b.maxZ);
+          ctx.fillRect(a.x, a.y, c.x - a.x, c.y - a.y);
+        }
+        for (const pickup of healthPickups) {
+          if (!pickup.active) continue;
+          const p = toMap(pickup.x, pickup.z);
+          ctx.fillStyle = "#4ee37a";
+          ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
+        }
+        for (const drop of healthDrops) {
+          const p = toMap(drop.x, drop.z);
+          ctx.fillStyle = "#4ee37a";
+          ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
+        }
+        for (const en of enemies) {
+          if (!en.alive) continue;
+          const p = toMap(en.group.position.x, en.group.position.z);
+          ctx.fillStyle = en.heavy ? "#15151a" : "#ff5454";
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const you = toMap(player.x, player.z);
+        ctx.save();
+        ctx.translate(you.x, you.y);
+        ctx.rotate(yaw);
+        ctx.fillStyle = "#59c9ff";
+        ctx.beginPath();
+        ctx.moveTo(0, -7);
+        ctx.lineTo(5, 6);
+        ctx.lineTo(-5, 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = "#eaf5ff";
+        ctx.font = "bold 11px monospace";
+        ctx.fillText("TACTICAL MAP", left + 8, top + 15);
+        ctx.fillText(`ENEMIES: ${enemiesLeft}`, left + 8, top + size - 8);
+      }
+
+      function drawOverlay() {
+        ctx.clearRect(0, 0, W, H);
+
+        const cx = W / 2,
+          cy = H / 2;
+        sketchLine(cx - 14, cy, cx - 4, cy, 1, 0.6);
+        sketchLine(cx + 4, cy, cx + 14, cy, 1, 0.6);
+        sketchLine(cx, cy - 14, cx, cy - 4, 1, 0.6);
+        sketchLine(cx, cy + 4, cx, cy + 14, 1, 0.6);
+        if (aimTargetDist != null) {
+          drawTargetBox(
+            cx,
+            cy,
+            Math.max(16, Math.min(50, 260 / aimTargetDist)),
+          );
+        } else {
+          sketchCircle(cx, cy, 18, 1);
+        }
+
+        drawEnemyHealthBars();
+        drawEnemyArrows();
+        drawMinimap();
+        drawHUD();
+      }
+
+      function drawPausedOverlay() {
+        // Dark ember gradient instead of the old cream wash, matching the
+        // lobby/game-over screens — the one moment gameplay fully stops is
+        // exactly when the dramatic theme should take over the whole frame.
+        const grad = ctx.createRadialGradient(
+          W / 2,
+          H / 2,
+          0,
+          W / 2,
+          H / 2,
+          Math.max(W, H) * 0.7,
+        );
+        grad.addColorStop(0, "rgba(60,14,12,0.88)");
+        grad.addColorStop(1, "rgba(6,3,2,0.94)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+        ctx.textAlign = "center";
+        ctx.font = hudFont(52);
+        glowText("PAUSED", W / 2, H / 2 - 10, HUD_ACCENT, 30);
+        ctx.font = hudFont(18, "600");
+        ctx.fillStyle = "#f3e9df";
+        ctx.fillText("Press START to resume", W / 2, H / 2 + 30);
+        ctx.textAlign = "left";
+      }
+
+      function endGame(won) {
+        running = false;
+        document.getElementById("finalMsg").textContent = won
+          ? `You win! Score: ${score}`
+          : `You went down. Score: ${score}`;
+        document.getElementById("gameOverOverlay").style.display = "flex";
+      }
+
+      let lastTime = Date.now();
+      function loop() {
+        if (!running) return;
+        const now = Date.now();
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+
+        if (input.startPresses > 0) {
+          input.startPresses--;
+          paused = !paused;
+        }
+
+        if (!paused) update(dt);
+        renderer.render(scene, camera);
+        drawOverlay();
+        if (paused) drawPausedOverlay();
+        requestAnimationFrame(loop);
+      }
+
+      document.getElementById("startBtn").addEventListener("click", () => {
+        ensureAudio(); // unlock audio on this user gesture, before any shot needs to play
+        document.getElementById("lobby").style.display = "none";
+        gameWrap.style.display = "block";
+        resizeGame();
+        weaponIndex = 0;
+        weaponState = WEAPONS.map((w) => ({ ammo: w.maxAmmo }));
+        initEnemySpawning();
+        paused = false;
+        running = true;
+        lastTime = Date.now();
+        loop();
+      });
+    </script>
+  </body>
+</html>
