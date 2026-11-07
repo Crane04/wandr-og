@@ -8,6 +8,7 @@ const app = express();
 // three.js is served straight from node_modules so the game has no CDN dependency
 app.use('/three', express.static(path.join(__dirname, 'node_modules/three')));
 app.use('/qr', express.static(path.join(__dirname, 'node_modules/qrcode-generator/dist')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public/game.html'))); // the site's front door is the game
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
