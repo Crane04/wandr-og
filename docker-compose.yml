@@ -34,3 +34,12 @@ services:
       - "127.0.0.1:3011:3011"
     environment:
       - PORT=3011
+
+  fight:
+    build: ./fight
+    container_name: wandr-fight
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3012:3012"
+    environment:
+      - PORT=3012

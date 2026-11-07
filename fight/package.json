@@ -1,0 +1,19 @@
+{
+  "name": "fight",
+  "version": "1.0.0",
+  "description": "Iron Courtyard: a 3D 1v1 fighter played with phones as controllers",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/sim.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.3.0",
+    "qrcode-generator": "^2.0.4",
+    "three": "^0.187.0",
+    "ws": "^8.22.1"
+  }
+}

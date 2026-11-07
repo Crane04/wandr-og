@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>wandr / Iron Courtyard</title>
+<style>
+  :root { --gold:#e8b45a; --red:#d6392f; --blue:#3b7bff; --ink:#0a0a12; }
+  * { box-sizing:border-box; margin:0; }
+  html,body { height:100%; background:#05060f; overflow:hidden; font-family:'Trebuchet MS','Segoe UI',system-ui,sans-serif; color:#fff; user-select:none; }
+  canvas#view { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  #hud { position:fixed; inset:0; pointer-events:none; opacity:0; transition:opacity .4s; }
+  #hud.on { opacity:1; }
+  .bar { position:absolute; top:22px; width:min(38vw,520px); height:26px; background:rgba(0,0,0,.55); border:2px solid rgba(255,255,255,.75); transform:skewX(-18deg); overflow:hidden; box-shadow:0 0 18px rgba(0,0,0,.6); }
+  .bar.p1 { left:3vw; } .bar.p2 { right:3vw; }
+  .bar .lag, .bar .fill { position:absolute; top:0; bottom:0; }
+  .bar.p1 .lag, .bar.p1 .fill { left:0; } .bar.p2 .lag, .bar.p2 .fill { right:0; }
+  .bar .lag { background:#fff; width:100%; transition:width .6s .35s ease-out; }
+  .bar .fill { width:100%; background:linear-gradient(#ffd75e,#f08a1c); transition:width .08s; }
+  .bar.low .fill { background:linear-gradient(#ff7a6a,#c0211a); }
+  .name { position:absolute; top:54px; font-weight:900; letter-spacing:.18em; font-size:15px; text-shadow:0 2px 6px #000; }
+  .name.p1 { left:3.4vw; color:#8fb4ff; } .name.p2 { right:3.4vw; color:#ff8f86; }
+  .meter { position:absolute; bottom:24px; width:min(26vw,360px); height:12px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.5); transform:skewX(-18deg); }
+  .meter.p1 { left:3vw; } .meter.p2 { right:3vw; }
+  .meter i { position:absolute; top:0; bottom:0; width:0%; background:linear-gradient(#8be0ff,#2a7bff); }
+  .meter.p1 i { left:0; } .meter.p2 i { right:0; }
+  .meter.full { box-shadow:0 0 16px #5ab4ff, 0 0 4px #fff inset; animation:pulse .6s infinite alternate; }
+  @keyframes pulse { to { box-shadow:0 0 28px #8fd0ff, 0 0 8px #fff inset; } }
+  .meter b { position:absolute; top:-18px; font-size:11px; letter-spacing:.2em; color:#9fd0ff; opacity:0; transition:opacity .2s; transform:skewX(18deg); }
+  .meter.p1 b { left:0; } .meter.p2 b { right:0; }
+  .meter.full b { opacity:1; }
+  #timer { position:absolute; top:12px; left:50%; transform:translateX(-50%); font-size:46px; font-weight:900; text-shadow:0 3px 10px #000; width:90px; text-align:center; }
+  .pips { position:absolute; top:58px; display:flex; gap:6px; }
+  .pips.p1 { left:calc(3vw + min(38vw,520px) - 60px); } .pips.p2 { right:calc(3vw + min(38vw,520px) - 60px); }
+  .pip { width:14px; height:14px; border-radius:50%; border:2px solid #fff; background:transparent; }
+  .pip.won { background:var(--gold); border-color:var(--gold); box-shadow:0 0 10px var(--gold); }
+  #combo { position:absolute; top:34%; font-size:34px; font-weight:900; font-style:italic; text-shadow:0 3px 10px #000; opacity:0; color:var(--gold); }
+  #combo.p1 { left:6vw; } #combo.p2 { right:6vw; text-align:right; }
+  #combo.show { opacity:1; }
+  #combo small { display:block; font-size:14px; letter-spacing:.3em; color:#fff; }
+  #banner { position:fixed; left:0; right:0; top:34%; text-align:center; font-size:clamp(54px,11vw,150px); font-weight:900; font-style:italic; letter-spacing:.06em; color:#fff; text-shadow:0 0 30px rgba(232,180,90,.7),0 6px 0 #6a3a10,0 10px 30px #000; opacity:0; transform:scale(1.5); pointer-events:none; }
+  #banner.show { animation:slam .5s cubic-bezier(.2,1.4,.4,1) forwards; }
+  #banner.hold { opacity:1; transform:scale(1); }
+  @keyframes slam { from { opacity:0; transform:scale(2.2); } to { opacity:1; transform:scale(1); } }
+  #sub { position:fixed; left:0; right:0; top:58%; text-align:center; font-size:20px; letter-spacing:.3em; color:#ffe2a8; text-shadow:0 2px 8px #000; opacity:0; transition:opacity .3s; pointer-events:none; }
+  #sub.on { opacity:1; }
+  #vignette { position:fixed; inset:0; pointer-events:none; background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%); }
+  #pause { position:fixed; inset:0; z-index:20; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; background:rgba(4,5,12,.62); pointer-events:none; }
+  #pause.on { display:flex; }
+  #pause h2 { font-size:clamp(48px,9vw,110px); font-weight:900; font-style:italic; letter-spacing:.06em; color:#fff; text-shadow:0 0 30px rgba(0,0,0,.8); }
+  #pause p { font-size:16px; letter-spacing:.3em; color:#ffe2a8; }
+  #soundOff { position:fixed; right:16px; bottom:16px; z-index:21; display:none; padding:9px 14px; border:1px solid rgba(255,226,168,.45); border-radius:8px; background:rgba(10,10,24,.82); color:#ffe2a8; font:inherit; font-size:12px; letter-spacing:.14em; cursor:pointer; }
+  #soundOff.on { display:block; }
+  #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; }
+
+  #lobby { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:radial-gradient(ellipse at center, rgba(10,10,24,.55), rgba(3,3,10,.92)); z-index:5; transition:opacity .5s; }
+  #lobby.off { opacity:0; pointer-events:none; }
+  .panel { text-align:center; padding:34px 44px; max-width:880px; }
+  .logo { font-size:clamp(40px,7vw,86px); font-weight:900; letter-spacing:.08em; font-style:italic; background:linear-gradient(#fff3d0,#e8b45a 60%,#a5651a); -webkit-background-clip:text; background-clip:text; color:transparent; filter:drop-shadow(0 4px 18px rgba(232,180,90,.35)); }
+  .join { display:flex; gap:28px; justify-content:center; align-items:center; margin:28px 0 18px; flex-wrap:wrap; }
+  #qr { background:#fff; padding:10px; border-radius:10px; width:190px; height:190px; }
+  #qr svg, #qr img { width:100%; height:100%; display:block; }
+  .code { font-size:64px; font-weight:900; letter-spacing:.18em; color:var(--gold); }
+  .url { color:#9aa4c8; font-size:14px; margin-top:4px; }
+  .slots { display:flex; gap:16px; justify-content:center; margin:10px 0 22px; }
+  .slot { min-width:230px; padding:14px 18px; border:2px solid rgba(255,255,255,.25); border-radius:8px; background:rgba(255,255,255,.04); }
+  .slot h3 { font-size:13px; letter-spacing:.3em; }
+  .slot.s1 h3 { color:#8fb4ff; } .slot.s2 h3 { color:#ff8f86; }
+  .pickrow { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px; }
+  .who { font-size:28px; font-weight:900; font-style:italic; letter-spacing:.1em; color:var(--c,#fff); text-shadow:0 0 14px var(--c,#fff); }
+  .arr { pointer-events:auto; cursor:pointer; font-size:34px; line-height:1; padding:2px 10px; color:#cfd6f0; border-radius:6px; }
+  .arr:hover { background:rgba(255,255,255,.12); }
+  .slot p { margin-top:6px; font-size:15px; color:#cfd6f0; }
+  .slot.in { border-color:#6fe08f; background:rgba(111,224,143,.1); }
+  .slot.in p { color:#9af0b4; }
+  .btns { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+  .btns .diff { min-width:190px; }
+  button { pointer-events:auto; cursor:pointer; font:inherit; font-weight:900; letter-spacing:.2em; font-size:16px; padding:15px 28px; color:#fff; background:linear-gradient(#e8b45a,#a5651a); border:0; border-radius:6px; box-shadow:0 6px 0 #5a340c,0 12px 24px rgba(0,0,0,.5); transform:skewX(-8deg); }
+  button.alt { background:linear-gradient(#4a5b9c,#26306a); box-shadow:0 6px 0 #11183a,0 12px 24px rgba(0,0,0,.5); }
+  button:active { transform:skewX(-8deg) translateY(4px); box-shadow:0 2px 0 #5a340c; }
+  .slot button.more { display:block; margin:8px auto 0; padding:4px 8px; font-size:11px; font-weight:700; letter-spacing:.16em; color:#9aa4c8; background:none; box-shadow:none; transform:none; text-decoration:underline; text-underline-offset:3px; }
+  .slot button.more:hover { color:#fff; }
+  #details { position:fixed; inset:0; z-index:6; display:none; align-items:center; justify-content:center; padding:16px; background:rgba(3,3,10,.7); }
+  #details.on { display:flex; }
+  .dcard { width:min(360px,100%); padding:24px; text-align:center; background:#0d0f1e; border:2px solid var(--c,#e8b45a); border-radius:8px; }
+  .dcard h3 { font-size:32px; font-weight:900; font-style:italic; letter-spacing:.1em; color:var(--c,#fff); }
+  #dTitle { font-size:11px; letter-spacing:.3em; color:#9aa4c8; margin-top:4px; }
+  #dAbility { margin-top:18px; font-size:13px; font-weight:700; letter-spacing:.14em; color:var(--c,#e8b45a); }
+  #dDesc { margin-top:4px; font-size:14px; color:#cfd6f0; }
+  .dcard button { margin-top:20px; font-size:13px; padding:10px 20px; }
+  #err { position:fixed; top:10px; left:10px; z-index:9; color:#ff9a8f; font-size:13px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="vignette"></div>
+<div id="hud">
+  <div class="bar p1"><div class="lag"></div><div class="fill"></div></div>
+  <div class="bar p2"><div class="lag"></div><div class="fill"></div></div>
+  <div class="name p1">RIME</div><div class="name p2">CINDER</div>
+  <div class="pips p1"><div class="pip"></div><div class="pip"></div></div>
+  <div class="pips p2"><div class="pip"></div><div class="pip"></div></div>
+  <div id="timer">60</div>
+  <div class="meter p1"><i></i><b>SPECIAL READY</b></div>
+  <div class="meter p2"><i></i><b>SPECIAL READY</b></div>
+  <div id="combo" class="p1"></div>
+  <div id="combo2" class="p2" style="position:absolute;top:34%;right:6vw;font-size:34px;font-weight:900;font-style:italic;text-shadow:0 3px 10px #000;opacity:0;color:#e8b45a;text-align:right"></div>
+</div>
+<div id="banner"></div>
+<div id="sub"></div>
+<div id="flash"></div>
+<button id="soundOff">SOUND OFF &middot; CLICK TO TURN ON</button>
+<div id="pause"><h2>PAUSED</h2><p>PRESS START TO RESUME</p></div>
+
+<div id="lobby">
+  <div class="panel">
+    <div class="logo">IRON COURTYARD</div>
+    <div class="join">
+      <div id="qr"></div>
+      <div>
+        <div class="code" id="code">....</div>
+        <div class="url" id="url">connecting...</div>
+        <div class="url">scan with your phone, same wifi</div>
+      </div>
+    </div>
+    <div class="slots">
+      <div class="slot s1" id="slot1"><h3>PLAYER 1</h3><div class="pickrow"><span class="arr" data-p="0" data-d="-1">&#8249;</span><div><div class="who">RIME</div></div><span class="arr" data-p="0" data-d="1">&#8250;</span></div><button type="button" class="more" data-p="0">VIEW DETAILS</button><p>waiting for a phone (or use keyboard)</p></div>
+      <div class="slot s2" id="slot2"><h3>PLAYER 2</h3><div class="pickrow"><span class="arr" data-p="1" data-d="-1">&#8249;</span><div><div class="who">CINDER</div></div><span class="arr" data-p="1" data-d="1">&#8250;</span></div><button type="button" class="more" data-p="1">VIEW DETAILS</button><p>waiting for a phone (or fight the CPU)</p></div>
+    </div>
+    <div class="btns">
+      <button id="btnCpu">VS CPU</button>
+      <button id="btnDiff" class="alt diff" title="CPU difficulty">CPU: MEDIUM</button>
+      <button id="btnVs" class="alt">VS FRIEND</button>
+    </div>
+  </div>
+</div>
+<div id="details">
+  <div class="dcard" role="dialog" aria-modal="true" aria-labelledby="dName">
+    <h3 id="dName"></h3>
+    <div id="dTitle"></div>
+    <div id="dAbility"></div>
+    <div id="dDesc"></div>
+    <button id="dClose" type="button" class="alt">CLOSE</button>
+  </div>
+</div>
+<div id="err"></div>
+<script src="/qr/qrcode.js"></script>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
