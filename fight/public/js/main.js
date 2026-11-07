@@ -52,7 +52,7 @@ resize();
 
 // ---------------------------------------------------------------- fighters
 // Plays exactly as Kain until he gets a special of his own.
-ROSTER.push({ ...ROSTER.find((c) => c.name === 'KAIN'), name: 'JAMES', title: 'THE STREET FIGHTER', skinModel: 'james' });
+ROSTER.push({ ...ROSTER.find((c) => c.name === 'KAIN'), name: 'JAMES', title: 'THE STREET FIGHTER', skinModel: 'james', quote: 'Same time tomorrow? Bring friends.' });
 const pick = [0, 2];
 const COLORS = [ROSTER[0].fx, ROSTER[2].fx];
 const fighters = [new Fighter(ROSTER[pick[0]], 0, null), new Fighter(ROSTER[pick[1]], 1, null)];
@@ -200,16 +200,20 @@ function hideDetails() {
 document.querySelectorAll('.more').forEach((el) => { el.onclick = () => showDetails(+el.dataset.p); });
 $('#dClose').onclick = hideDetails;
 $('#details').onclick = (e) => { if (e.target === e.currentTarget) hideDetails(); };
-function applyPick(i) {
-  const c = ROSTER[pick[i]];
+// puts a fighter on stage and in the HUD; the lobby pick is separate, as arcade swaps foes
+function showFighter(i, c) {
   fighters[i].rebuild(c);
   dress(fighters[i]);
   fighters[i].setMode('idle');
   COLORS[i] = c.fx;
   document.querySelector('.name.p' + (i + 1)).textContent = c.name;
+  document.querySelector('.meter.p' + (i + 1) + ' b').textContent = c.ability.name + ' READY';
+}
+function applyPick(i) {
+  const c = ROSTER[pick[i]];
+  showFighter(i, c);
   const s = document.querySelector('#slot' + (i + 1));
   s.querySelector('.who').textContent = c.name;
-  document.querySelector('.meter.p' + (i + 1) + ' b').textContent = c.ability.name + ' READY';
   const hex = '#' + c.fx.toString(16).padStart(6, '0');
   s.style.setProperty('--c', hex);
   if (detailsFor === i) showDetails(i); // a phone can flick to another fighter while this is open
@@ -232,14 +236,13 @@ function setPaused(v) {
   paused = v;
   $('#pause').classList.toggle('on', v);
 }
-let mode = 'cpu';    // cpu | vs
+let mode = 'cpu';    // cpu | vs | arcade | survival | training
+const cpuControlled = () => mode !== 'vs'; // player 2 is the CPU, or the training dummy
 let round = 1;
 let wins = [0, 0];
 let roundTime = 60;
 let phaseT = 0;
 let koInfo = null;
-// The CPU follows the player and remembers across refreshes. A win moves it further than a
-// loss, so it settles where the player wins about 40% of matches: always a real fight.
 const LEVELS = Object.keys(DIFFICULTY);
 let difficulty = 'medium';
 try { const d = localStorage.getItem('fightDifficulty'); if (LEVELS.includes(d)) difficulty = d; } catch {}
@@ -285,6 +288,9 @@ function setPips() {
 
 function startMatch(m) {
   mode = m;
+  hudEl.dataset.mode = m;
+  hideResult();
+  modeTag();
   wins = [0, 0];
   round = 1;
   hideDetails();
@@ -303,13 +309,18 @@ function startRound() {
     f.state = 'intro';
   });
   brain.clear(fighters[1]);
-  roundTime = 60;
+  if (mode === 'survival') fighters[0].hp = run.hp; // one health bar for the whole run
+  roundTime = mode === 'training' ? Infinity : 60;
   phase = 'intro';
   phaseT = 0;
   timeScale = 1;
   koInfo = null;
   sub('');
-  banner(wins[0] === 1 && wins[1] === 1 ? 'FINAL ROUND' : 'ROUND ' + round, false, 1500);
+  let text = wins[0] === 1 && wins[1] === 1 ? 'FINAL ROUND' : 'ROUND ' + round;
+  if (mode === 'arcade' && round === 1) text = `STAGE ${run.stage + 1}`;
+  if (mode === 'survival') text = `OPPONENT ${run.beaten + 1}`;
+  if (mode === 'training') text = 'TRAINING';
+  banner(text, false, 1500);
   sfx.gong();
 }
 
@@ -333,7 +344,8 @@ function endRound(winner, how) {
       winner.setMode('win');
     }
   }
-  const matchWon = winner && wins[winner.idx] >= 2;
+  if (mode === 'survival') run.hp = fighters[0].hp;
+  const matchWon = winner && wins[winner.idx] >= (mode === 'survival' ? 1 : 2);
   phase = 'over';
   phaseT = 0;
   koInfo = { winner, matchWon, how };
@@ -352,6 +364,11 @@ function afterRoundText() {
 function toLobby() {
   setPaused(false);
   phase = 'lobby';
+  run = null;
+  hideResult();
+  brain.level = DIFFICULTY[difficulty];
+  if (fighters[1].cfg !== ROSTER[pick[1]]) applyPick(1); // arcade and survival swap the foe
+  showSurvivalBest();
   combat.clearProjectiles();
   blood.clear();
   fighters.forEach((f, i) => { f.reset(i === 0 ? -1.4 : 1.4, false); f.setMode('idle'); });
@@ -370,7 +387,12 @@ function stepMatch(dt) {
     if (phaseT > 1.9) beginFight();
   } else if (phase === 'fight') {
     roundTime -= dt;
-    if (mode === 'cpu') brain.think(fighters[1], fighters[0], dt);
+    if (mode === 'training') {
+      dummyThink(dt);
+      // nobody goes down in training: health refills before a hit can finish anyone
+      for (const f of fighters) if (f.hp < 40) f.hp = f.maxHp;
+      fighters[0].meter = 100;
+    } else if (cpuControlled()) brain.think(fighters[1], fighters[0], dt);
     const dead = fighters.find((f) => f.state === 'ko');
     if (dead) {
       phase = 'ko';
@@ -392,6 +414,10 @@ function stepMatch(dt) {
   } else if (phase === 'over') {
     brain.clear(fighters[1]);
     const T = koInfo.matchWon ? 2.2 : 2.0;
+    if (run && koInfo.matchWon) { // arcade and survival wait on the result card
+      if (phaseT > T && !koInfo.shown) { koInfo.shown = true; showResult(); }
+      return;
+    }
     if (phaseT > T && !koInfo.shown) { koInfo.shown = true; afterRoundText(); }
     if (koInfo.matchWon) {
       if (phaseT > 12) toLobby();
@@ -399,6 +425,128 @@ function stepMatch(dt) {
       round++;
       startRound();
     }
+  }
+}
+
+// ---------------------------------------------------------------- solo modes
+// Arcade: 5 different opponents, each a notch harder. Survival: one health bar for as
+// many opponents as you can beat. Both start from the chosen CPU difficulty.
+const ARCADE_FIGHTS = 5;
+const SURVIVAL_HEAL = 20;
+let run = null; // arcade or survival progress
+const soloLevel = (offset) => Math.min(1, Math.max(0.2, DIFFICULTY[difficulty] + offset));
+function pickFoes(n, avoid) {
+  const pool = ROSTER.map((_, i) => i).filter((i) => i !== avoid);
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  return pool.slice(0, n);
+}
+let survivalBest = 0;
+try { survivalBest = +localStorage.getItem('fightSurvivalBest') || 0; } catch {}
+function showSurvivalBest() { $('#btnSurvival').textContent = survivalBest ? `SURVIVAL  BEST ${survivalBest}` : 'SURVIVAL'; }
+showSurvivalBest();
+
+function startArcade() {
+  run = { kind: 'arcade', stage: 0, foes: pickFoes(ARCADE_FIGHTS, pick[0]) };
+  arcadeFight();
+}
+function arcadeFight() {
+  showFighter(1, ROSTER[run.foes[run.stage]]);
+  brain.level = soloLevel(-0.15 + (0.25 * run.stage) / (ARCADE_FIGHTS - 1)); // a notch under, up to a notch over
+  startMatch('arcade');
+}
+function startSurvival() {
+  run = { kind: 'survival', beaten: 0, hp: fighters[0].maxHp, last: -1 };
+  survivalFight();
+}
+function survivalFight() {
+  const foe = pickFoes(ROSTER.length - 1, pick[0]).find((i) => i !== run.last);
+  run.last = foe;
+  showFighter(1, ROSTER[foe]);
+  brain.level = soloLevel(-0.15 + 0.04 * run.beaten);
+  startMatch('survival');
+}
+
+function modeTag() {
+  const el = $('#modeTag');
+  if (mode === 'arcade' && run) el.textContent = `STAGE ${run.stage + 1} / ${ARCADE_FIGHTS}`;
+  else if (mode === 'survival' && run) el.textContent = `${run.beaten} BEATEN`;
+  else if (mode === 'training') el.textContent = `DUMMY: ${dummy.toUpperCase()}`;
+  else el.textContent = '';
+  $('#pause .dummy').textContent = mode === 'training' ? `△ DUMMY: ${dummy.toUpperCase()}` : '';
+}
+
+// the card between fights: who won, their line, and what's next
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+function card(title, who, line, next) {
+  const el = $('#result');
+  el.style.setProperty('--c', hex(who.fx));
+  $('#rTitle').textContent = title;
+  $('#rName').textContent = who.name;
+  $('#rQuote').textContent = `"${who.quote}"`;
+  $('#rLine').textContent = line;
+  $('#rNext').textContent = next;
+  el.classList.add('on');
+  bannerEl.classList.remove('show', 'hold');
+  bannerEl.style.opacity = 0;
+}
+function hideResult() { $('#result').classList.remove('on'); }
+function showResult() {
+  const won = koInfo.winner === fighters[0];
+  const me = fighters[0].cfg, foe = fighters[1].cfg;
+  if (run.kind === 'arcade') {
+    const ladder = run.foes.map((_, i) => (i < run.stage + (won ? 1 : 0) ? '●' : '○')).join(' ');
+    if (won && run.stage === ARCADE_FIGHTS - 1) {
+      run.next = 'lobby';
+      card('ARCADE CLEAR', me, ladder, 'ANY BUTTON: LOBBY');
+    } else if (won) {
+      run.next = 'continue';
+      card(`STAGE ${run.stage + 1} CLEAR`, me, `${ladder}   NEXT: ${ROSTER[run.foes[run.stage + 1]].name}`, 'ANY BUTTON: NEXT FIGHT   ○ LOBBY');
+    } else {
+      run.next = 'retry';
+      card('DEFEATED', foe, `${ladder}   STAGE ${run.stage + 1} OF ${ARCADE_FIGHTS}`, 'ANY BUTTON: TRY AGAIN   ○ LOBBY');
+    }
+  } else if (won) {
+    run.beaten++;
+    run.hp = Math.min(fighters[0].maxHp, fighters[0].hp + SURVIVAL_HEAL);
+    run.next = 'continue';
+    card(`${run.beaten} DOWN`, me, `HEALTH +${SURVIVAL_HEAL}, NOW ${Math.round(run.hp)}`, 'ANY BUTTON: NEXT OPPONENT   ○ LOBBY');
+  } else {
+    const best = run.beaten > survivalBest;
+    if (best) { survivalBest = run.beaten; try { localStorage.setItem('fightSurvivalBest', survivalBest); } catch {} }
+    run.next = 'again';
+    card('SURVIVAL OVER', foe, `${run.beaten} BEATEN   ${best ? 'NEW BEST' : 'BEST ' + survivalBest}`, 'ANY BUTTON: TRY AGAIN   ○ LOBBY');
+  }
+}
+function resultNext() {
+  const next = run.next;
+  if (next === 'lobby') return toLobby();
+  if (run.kind === 'arcade') {
+    if (next === 'continue') run.stage++;
+    return arcadeFight();
+  }
+  return next === 'again' ? startSurvival() : survivalFight();
+}
+
+// Training: a dummy that stands, guards or swings, and nobody runs out of health
+const DUMMY = ['stand', 'block', 'attack'];
+let dummy = 'stand', dummyT = 0, dummySwing = 0;
+function setDummy(d) {
+  dummy = d;
+  modeTag();
+}
+const nextDummy = () => { setDummy(DUMMY[(DUMMY.indexOf(dummy) + 1) % DUMMY.length]); sfx.tick(); };
+$('#modeTag').onclick = () => { if (mode === 'training') nextDummy(); };
+function dummyThink(dt) {
+  const me = fighters[1], opp = fighters[0], inp = me.inp;
+  const dx = opp.x - me.x;
+  inp.aiX = 0; inp.aiY = 0; inp.aiBlock = false;
+  if (dummy === 'block') {
+    inp.aiBlock = true;
+    if (opp.state === 'attack' && opp.atk.level === 'low') inp.aiY = 1; // guards low against sweeps
+  } else if (dummy === 'attack') {
+    dummyT -= dt;
+    if (Math.abs(dx) > 1.3) inp.aiX = (Math.sign(dx) || 1) * WALK_AXIS;
+    else if (dummyT <= 0 && me.state === 'idle') { dummyT = 1.3; me.press(dummySwing++ % 2 ? 'kick' : 'punch'); }
   }
 }
 
@@ -419,11 +567,13 @@ window.addEventListener('keydown', (e) => {
   lastTap[k] = performance.now();
   if (k === 'escape') { toLobby(); return; }
   if (k === 'enter') {
+    e.preventDefault(); // Enter is the game's key; it must not also click whichever button has focus
     if (phase === 'lobby') startMatch(phones[1] ? 'vs' : 'cpu');
-    else if (phase === 'over' && koInfo?.matchWon) startMatch(mode);
+    else if (phase === 'over' && koInfo?.matchWon) { if (!run) startMatch(mode); else if (koInfo.shown) resultNext(); }
     else if (phase === 'fight') setPaused(!paused);
     return;
   }
+  if (k === 't' && mode === 'training' && phase !== 'lobby') { nextDummy(); return; }
   if (phase === 'lobby') {
     if (k === 'a') cycle(0, -1); else if (k === 'd') cycle(0, 1);
     else if (k === 'arrowleft') cycle(1, -1); else if (k === 'arrowright') cycle(1, 1);
@@ -431,7 +581,7 @@ window.addEventListener('keydown', (e) => {
   }
   if (phase !== 'fight' || paused) return;
   KB.forEach((m, i) => {
-    if (i === 1 && mode === 'cpu') return;
+    if (i === 1 && cpuControlled()) return;
     for (const a of ['punch', 'kick', 'special']) if (k === m[a]) fighters[i].press(a);
   });
 });
@@ -441,7 +591,7 @@ sfx.init((blocked) => $('#soundOff').classList.toggle('on', blocked));
 function pollKeyboard() {
   KB.forEach((m, i) => {
     const f = fighters[i];
-    if (i === 1 && mode === 'cpu') { f.setAxis('kb', 0, 0); f.setBlock('kb', false); return; }
+    if (i === 1 && cpuControlled()) { f.setAxis('kb', 0, 0); f.setBlock('kb', false); return; }
     const held = (key) => (keys.has(key) ? (dashing[key] ? 1 : WALK_AXIS) : 0);
     const x = held(m.r) - held(m.l);
     const y = (keys.has(m.d) ? 1 : 0) - (keys.has(m.u) ? 1 : 0);
@@ -497,7 +647,16 @@ function connect() {
       if (!f) return;
       // either phone can pause, even a second phone sitting out a CPU match
       if (m.action === 'start' && m.state === 'down' && phase === 'fight') { setPaused(!paused); return; }
-      if (m.player === 2 && mode === 'cpu' && phase !== 'lobby') return;
+      // paused: ○ quits to the lobby, and in training △ changes what the dummy does
+      if (paused && phase === 'fight' && m.state === 'down') {
+        if (m.action === 'block') { toLobby(); return; }
+        if (m.action === 'special' && mode === 'training') { nextDummy(); return; }
+      }
+      if (phase === 'over' && run && koInfo?.shown && m.state === 'down' && m.action) {
+        if (m.action === 'block') toLobby(); else resultNext();
+        return;
+      }
+      if (m.player === 2 && cpuControlled() && phase !== 'lobby') return;
       if (m.joystick) {
         if (phase === 'lobby') {
           const x = m.joystick.x || 0;
@@ -513,7 +672,7 @@ function connect() {
         }
         else if (m.state === 'down') {
           if (phase === 'fight') { if (!paused) f.press(m.action); }
-          else if (phase === 'over' && koInfo?.matchWon) startMatch(mode);
+          else if (phase === 'over' && koInfo?.matchWon && !run) startMatch(mode);
           else if (phase === 'lobby') startMatch(phones[1] && phones[2] ? 'vs' : 'cpu');
         }
       }
@@ -523,6 +682,11 @@ function connect() {
 connect();
 $('#btnCpu').onclick = () => startMatch('cpu');
 $('#btnVs').onclick = () => startMatch('vs');
+// a clicked button keeps focus, so Enter or Space would press it again later
+document.querySelectorAll('button').forEach((el) => el.addEventListener('click', () => el.blur()));
+$('#btnArcade').onclick = startArcade;
+$('#btnSurvival').onclick = startSurvival;
+$('#btnTraining').onclick = () => { dummy = 'stand'; startMatch('training'); };
 
 // ---------------------------------------------------------------- HUD + camera
 const bars = [...document.querySelectorAll('.bar')];
@@ -651,4 +815,4 @@ function frame(now) {
   composer.render();
 }
 requestAnimationFrame(frame);
-window.__wandr = { fighters, combat, blood, startMatch, applyPick, pick, ROSTER, get phase() { return phase; }, get paused() { return paused; }, brain };
+window.__wandr = { fighters, combat, blood, startMatch, applyPick, pick, ROSTER, get phase() { return phase; }, get run() { return run; }, get mode() { return mode; }, get dummy() { return dummy; }, get paused() { return paused; }, brain };

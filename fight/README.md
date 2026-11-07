@@ -11,6 +11,13 @@ Open http://localhost:3004/game.html on the laptop. Scan the QR with a phone on 
 
 Keyboard (testing): P1 WASD + J punch, K kick, L special, I block. P2 arrows + . / ; '
 
+Solo modes (lobby, second row):
+- ARCADE: 5 different opponents in a row, each best of 3, the CPU a notch harder every stage. Lose and you retry that stage.
+- SURVIVAL: one round per opponent and one health bar for the whole run. Each win gives back 20 health and the CPU gets harder. Your best count is saved in this browser.
+- TRAINING: no timer and no knockouts. The dummy stands, blocks or attacks: switch with T, by clicking the label under the timer, or △ on a phone while paused.
+
+Both arcade and survival start from the chosen CPU difficulty. While paused, ○ on a phone quits to the lobby.
+
 CPU difficulty: the button next to VS CPU, or ○ on a phone in the lobby, cycles Easy, Medium, Hard and Expert. It's remembered in this browser.
 
 Pause: START on either phone, or Enter on the keyboard. Esc quits to the lobby.

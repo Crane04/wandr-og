@@ -55,7 +55,33 @@
 
   #lobby { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:radial-gradient(ellipse at center, rgba(10,10,24,.55), rgba(3,3,10,.92)); z-index:5; transition:opacity .5s; }
   #lobby.off { opacity:0; pointer-events:none; }
-  .panel { text-align:center; padding:34px 44px; max-width:880px; }
+  .panel { text-align:center; padding:34px 44px; max-width:880px; margin:auto; }
+  #lobby { overflow-y:auto; } /* scrolls only if even the compact layout can't fit */
+  /* short laptop windows: tighten the lobby so every button stays on screen */
+  @media (max-height:820px) {
+    .panel { padding:14px 20px; }
+    .logo { font-size:clamp(34px,5.5vw,62px); }
+    .join { margin:12px 0 10px; gap:20px; }
+    #qr { width:130px; height:130px; padding:7px; }
+    .code { font-size:46px; }
+    .slots { margin:6px 0 12px; }
+    .slot { padding:10px 14px; }
+    .slot p { font-size:13px; }
+    .btns button { padding:12px 22px; font-size:14px; }
+    .btns.solo { margin-top:8px; }
+    .btns.solo button { padding:9px 18px; font-size:12px; }
+  }
+  @media (max-height:600px) {
+    .panel { padding:8px 16px; }
+    .logo { font-size:28px; }
+    #qr { width:92px; height:92px; padding:5px; }
+    .code { font-size:32px; }
+    .join { margin:4px 0 6px; }
+    .slots { margin:4px 0 8px; }
+    .slot { padding:6px 12px; }
+    .slot h3 { font-size:11px; }
+    .btns button { padding:9px 18px; }
+  }
   .logo { font-size:clamp(40px,7vw,86px); font-weight:900; letter-spacing:.08em; font-style:italic; background:linear-gradient(#fff3d0,#e8b45a 60%,#a5651a); -webkit-background-clip:text; background-clip:text; color:transparent; filter:drop-shadow(0 4px 18px rgba(232,180,90,.35)); }
   .join { display:flex; gap:28px; justify-content:center; align-items:center; margin:28px 0 18px; flex-wrap:wrap; }
   #qr { background:#fff; padding:10px; border-radius:10px; width:190px; height:190px; }
@@ -75,6 +101,20 @@
   .slot.in p { color:#9af0b4; }
   .btns { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
   .btns .diff { min-width:190px; }
+  .btns.solo { margin-top:12px; }
+  .btns.solo button { font-size:13px; padding:11px 22px; }
+  #modeTag { position:absolute; top:64px; left:50%; transform:translateX(-50%); font-size:12px; font-weight:900; letter-spacing:.25em; color:#ffe2a8; text-shadow:0 2px 6px #000; white-space:nowrap; }
+  #hud[data-mode=training] #modeTag { pointer-events:auto; cursor:pointer; }
+  #hud[data-mode=survival] .pips, #hud[data-mode=training] .pips, #hud[data-mode=training] #timer { display:none; }
+  #pause .dummy:empty { display:none; }
+  #result { position:fixed; inset:0; z-index:8; display:none; align-items:center; justify-content:center; padding:16px; background:radial-gradient(ellipse at center, rgba(5,6,14,.35), rgba(5,6,14,.8)); }
+  #result.on { display:flex; }
+  .rcard { width:min(520px,100%); text-align:center; }
+  #rTitle { font-size:14px; font-weight:900; letter-spacing:.4em; color:#ffe2a8; }
+  #rName { margin:6px 0 10px; font-size:clamp(46px,9vw,92px); font-weight:900; font-style:italic; letter-spacing:.06em; color:var(--c); text-shadow:0 4px 24px rgba(0,0,0,.8); }
+  #rQuote { font-size:18px; font-style:italic; color:#fff; text-shadow:0 2px 8px #000; }
+  #rLine { margin-top:18px; font-size:14px; letter-spacing:.2em; color:#cfd6f0; text-shadow:0 2px 6px #000; }
+  #rNext { margin-top:22px; font-size:12px; letter-spacing:.3em; color:#9aa4c8; }
   button { pointer-events:auto; cursor:pointer; font:inherit; font-weight:900; letter-spacing:.2em; font-size:16px; padding:15px 28px; color:#fff; background:linear-gradient(#e8b45a,#a5651a); border:0; border-radius:6px; box-shadow:0 6px 0 #5a340c,0 12px 24px rgba(0,0,0,.5); transform:skewX(-8deg); }
   button.alt { background:linear-gradient(#4a5b9c,#26306a); box-shadow:0 6px 0 #11183a,0 12px 24px rgba(0,0,0,.5); }
   button:active { transform:skewX(-8deg) translateY(4px); box-shadow:0 2px 0 #5a340c; }
@@ -104,6 +144,7 @@
   <div class="pips p1"><div class="pip"></div><div class="pip"></div></div>
   <div class="pips p2"><div class="pip"></div><div class="pip"></div></div>
   <div id="timer">60</div>
+  <div id="modeTag"></div>
   <div class="meter p1"><i></i><b>SPECIAL READY</b></div>
   <div class="meter p2"><i></i><b>SPECIAL READY</b></div>
   <div id="combo" class="p1"></div>
@@ -113,7 +154,7 @@
 <div id="sub"></div>
 <div id="flash"></div>
 <button id="soundOff">SOUND OFF &middot; CLICK TO TURN ON</button>
-<div id="pause"><h2>PAUSED</h2><p>PRESS START TO RESUME</p></div>
+<div id="pause"><h2>PAUSED</h2><p>PRESS START TO RESUME</p><p>○ QUIT TO LOBBY</p><p class="dummy"></p></div>
 
 <div id="lobby">
   <div class="panel">
@@ -135,6 +176,11 @@
       <button id="btnDiff" class="alt diff" title="CPU difficulty">CPU: MEDIUM</button>
       <button id="btnVs" class="alt">VS FRIEND</button>
     </div>
+    <div class="btns solo">
+      <button id="btnArcade" class="alt">ARCADE</button>
+      <button id="btnSurvival" class="alt">SURVIVAL</button>
+      <button id="btnTraining" class="alt">TRAINING</button>
+    </div>
   </div>
 </div>
 <div id="details">
@@ -144,6 +190,15 @@
     <div id="dAbility"></div>
     <div id="dDesc"></div>
     <button id="dClose" type="button" class="alt">CLOSE</button>
+  </div>
+</div>
+<div id="result">
+  <div class="rcard">
+    <div id="rTitle"></div>
+    <h3 id="rName"></h3>
+    <p id="rQuote"></p>
+    <p id="rLine"></p>
+    <p id="rNext"></p>
   </div>
 </div>
 <div id="err"></div>

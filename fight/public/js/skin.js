@@ -65,6 +65,27 @@ function load(name) {
   return loaded.get(name);
 }
 
+// Repaints an outfit in a new colour, keeping the texture's light and shade.
+// outfit: { tint, amount 0..1, base, lift }: base lightens a dark outfit as a whole,
+// lift keeps the texture's own light and shade on top of it.
+function recolor(material, { tint, amount = 0.85, base = 0, lift = 1.6 }) {
+  const m = material.clone(); // each fighter gets its own copy, so a mirror match can differ
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uTint = { value: new THREE.Color(tint) };
+    shader.uniforms.uAmount = { value: amount };
+    shader.uniforms.uLift = { value: lift };
+    shader.uniforms.uBase = { value: base };
+    shader.fragmentShader = 'uniform vec3 uTint;\nuniform float uAmount;\nuniform float uLift;\nuniform float uBase;\n' + shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+      diffuseColor.rgb = mix(diffuseColor.rgb, uTint * min(1.0, uBase + lum * uLift), uAmount);`,
+    );
+  };
+  m.customProgramCacheKey = () => 'outfit';
+  return m;
+}
+
 class Skin {
   constructor(asset, fighter) {
     this.f = fighter;
@@ -72,7 +93,10 @@ class Skin {
     this.body = clone(asset.scene);
     this.body.scale.setScalar((HEIGHT * (fighter.cfg.build?.scale || 1)) / asset.topY);
     this.body.traverse((o) => {
-      if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; }
+      if (!o.isMesh) return;
+      o.castShadow = true;
+      o.frustumCulled = false;
+      if (fighter.cfg.outfit) o.material = Array.isArray(o.material) ? o.material.map((m) => recolor(m, fighter.cfg.outfit)) : recolor(o.material, fighter.cfg.outfit);
     });
     this.mixer = new THREE.AnimationMixer(this.body);
     this.actions = {};
